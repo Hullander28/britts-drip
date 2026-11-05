@@ -11,7 +11,7 @@ async function kvGet(k,d){const q=await new Promise(r=>{const x=tx('kv').get(k);
 const kvSet=(k,v)=>put('kv',{id:k,v});
 
 /* ===== State ===== */
-const S={items:[],outfits:[],plans:{},history:[],profile:{name:'',photo:'',skin:'#e8b894'},settings:{dark:matchMedia('(prefers-color-scheme: dark)').matches,units:'F',city:'',lat:null,lon:null,place:''},tab:'today',mood:'Chill',wx:null,q:'',cat:'All',sort:'new',laundry:'All',dress:[],calMonth:null,dismissed:[]};
+const S={items:[],outfits:[],plans:{},history:[],profile:{name:'',photo:'',skin:'#e8b894'},settings:{dark:matchMedia('(prefers-color-scheme: dark)').matches,units:'F',city:'',lat:null,lon:null,place:'',tryonWorker:''},tab:'today',mood:'Chill',wx:null,q:'',cat:'All',sort:'new',laundry:'All',dress:[],calMonth:null,dismissed:[]};
 const CATS=['Tops','Bottoms','Dresses','Outerwear','Shoes','Accessories'];
 const SEASONS=['Spring','Summer','Fall','Winter'];
 const OCC=['Casual','Work','Date','Party','Workout','Formal','Lounge'];
@@ -80,6 +80,60 @@ function outfitWornRecently(ids){const key=[...ids].sort().join();return S.histo
 async function saveItem(it){const i=S.items.findIndex(x=>x.id===it.id);if(i>=0)S.items[i]=it;else S.items.unshift(it);await put('items',it)}
 async function logWear(ids,date=today(),note=''){const rep=outfitWornRecently(ids);S.history.push({id:uid(),date,items:ids,note});for(const id of ids){const it=item(id);if(!it)continue;it.wears=(it.wears||0)+1;if(!it.lastWorn||it.lastWorn<date)it.lastWorn=date;if(it.laundry!=='cleaners')it.laundry=it.cat==='Shoes'||it.cat==='Accessories'||it.cat==='Outerwear'?it.laundry:'dirty';await put('items',it)}await kvSet('history',S.history);toast(rep?'Logged. Heads up: you wore this same outfit on '+rep.date:'Outfit logged as worn')}
 
+
+/* ===== AI try-on (fal via Worker) ===== */
+const DEFAULT_WORKER='https://britts-drip-tryon.hullander28.workers.dev';
+function workerBase(){return ((S.settings.tryonWorker||'').trim()||DEFAULT_WORKER).replace(/\/$/,'')}
+async function callTryOn(personDataUrl, garmentDataUrl){
+  const base=workerBase();
+  if(!base) throw new Error('Set an AI try-on Worker URL in Me → Settings first.');
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(),120000);
+  try{
+    const res=await fetch(base+'/tryon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({person:personDataUrl,garment:garmentDataUrl}),signal:ctrl.signal});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error||('Try-on failed ('+res.status+')'));
+    if(!data.imageUrl) throw new Error('No image returned');
+    return data;
+  } finally { clearTimeout(t) }
+}
+async function urlToDataUrl(url){
+  if(typeof url==='string' && url.startsWith('data:')) return url;
+  const r=await fetch(url); const b=await r.blob();
+  return await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(b)});
+}
+async function runAiTryOn(garmentIds){
+  if(!S.profile.photo) throw new Error('Add a body photo in Me first.');
+  if(!garmentIds.length) throw new Error('Pick at least one garment.');
+  const order=['Tops','Dresses','Bottoms','Outerwear','Shoes','Accessories'];
+  const sorted=[...garmentIds].sort((a,b)=>order.indexOf(item(a)?.cat)-(order.indexOf(item(b)?.cat)));
+  let person=S.profile.photo;
+  const steps=[];
+  for(let i=0;i<sorted.length;i++){
+    const it=item(sorted[i]);
+    if(!it) continue;
+    toast(`AI try-on ${i+1}/${sorted.length}: ${it.name}…`);
+    const out=await callTryOn(person, it.img);
+    const next=await urlToDataUrl(out.imageUrl);
+    steps.push({itemId:it.id,name:it.name,url:next,mock:!!out.mock});
+    person=next;
+  }
+  return {final:person,steps,ids:sorted};
+}
+function openAiResult(result, garmentIds){
+  const mock=result.steps.some(x=>x.mock);
+  window.__aiTryOn = {result, garmentIds: result.ids||garmentIds};
+  openSheet(`<div class="row sp"><h2 style="margin:0">AI try-on result</h2><button class="btn sm sec" data-act="close">✕</button></div>
+  ${mock?'<p><span class="badge demo">MOCK — not fal.ai</span></p>':''}
+  <img src="${result.final}" class="prev" style="margin-top:10px" alt="AI try-on">
+  <p class="mut">Cost: ~4¢ per garment image (fal.ai). This run used <b>${result.steps.length}</b> image${result.steps.length===1?'':'s'} ≈ <b>$${(result.steps.length*0.04).toFixed(2)}</b>.</p>
+  <p class="mut">Photos were sent to your try-on Worker (and fal.ai when live) only for this request. Britts Drip does not keep a cloud copy.</p>
+  <label>Save as outfit name</label><input id="ai_name" value="AI look · ${new Date().toLocaleDateString()}">
+  <div class="row" style="margin-top:12px"><button class="btn" data-act="aisave">Save outfit</button>
+  <button class="btn sec" data-act="aiwear">Wear / log today</button>
+  <button class="btn sec" data-act="aiplan">Plan today</button></div>`);
+}
+
 /* ===== Render ===== */
 function render(){document.documentElement.classList.toggle('dark',!!S.settings.dark);document.querySelector('meta[name=theme-color]').content=S.settings.dark?'#0f0f14':'#7c3aed';
  $('#tabs').innerHTML=TABS.map(([k,l])=>`<button data-tab="${k}" class="${S.tab===k?'on':''}" aria-label="${l}">${icon(k)}<span>${l}</span></button>`).join('');
@@ -120,9 +174,14 @@ function vDress(){const picked=S.dress.map(d=>item(d.id)).filter(Boolean);
  ${S.dress.map((d,k)=>{const i=item(d.id);return i?`<img class="pc" src="${i.img}" data-pc="${k}" style="left:${d.x}px;top:${d.y}px;width:${d.w}px;z-index:${k+2}">`:''}).join('')}</div>
  <p class="mut">Drag pieces to arrange. Tap a piece below to add or remove. Use −/+ to resize the last piece you touched.</p>
  <div class="row"><button class="btn sm sec" data-act="szm">−</button><button class="btn sm sec" data-act="szp">+</button><button class="btn sm sec" data-act="clearb">Clear</button><button class="btn sm" data-act="saveb" ${picked.length?'':'disabled'}>Save outfit</button><button class="btn sm sec" data-act="wearb" ${picked.length?'':'disabled'}>Wear today</button></div>
+ <div class="card" style="margin-top:10px"><div class="row sp"><b>Try on for real</b><span class="badge">~$0.04/image</span></div>
+ <p class="mut" style="margin:6px 0">Uses your body photo and each selected garment. Multiple pieces are sent one after another (~4¢ each). ${workerBase()?'Worker connected.':'No Worker URL set — configure it in Me (app still works without AI).'}</p>
+ <p class="mut"><b>Consent:</b> When you tap below, your body photo and garment photo(s) are sent to your try-on Worker, which forwards them to <b>fal.ai</b> for processing. Do not use photos of other people without permission.</p>
+ <button class="btn full" data-act="aitryon" ${picked.length?'':'disabled'}>✨ Try on for real${picked.length?` (${picked.length} piece${picked.length>1?'s':''})`:''}</button>
+ <div id="aiload" class="mut" style="display:none;margin-top:8px">Generating… this can take 10–40s per piece.</div></div>
  ${CATS.map(c=>{const L=S.items.filter(i=>i.cat===c);return L.length?`<h3>${c}</h3><div class="strip">${L.map(i=>thumb(i,S.dress.some(d=>d.id===i.id)?'sel':'')).join('')}</div>`:''}).join('')}
  ${S.items.length?'':'<div class="card mut">Add clothes in the Closet tab first.</div>'}
- <h3>Saved outfits</h3>${S.outfits.length?S.outfits.map(o=>`<div class="card"><div class="row sp"><b>${esc(o.name)}</b><span><button class="btn sm sec" data-loado="${o.id}">Load</button> <button class="btn sm sec" data-plano="${o.id}">Plan</button> <button class="btn sm sec" data-delo="${o.id}">✕</button></span></div><div class="strip" style="margin-top:8px">${o.items.map(item).filter(Boolean).map(i=>thumb(i)).join('')}</div></div>`).join(''):'<p class="mut">No saved outfits yet.</p>'}`}
+ <h3>Saved outfits</h3>${S.outfits.length?S.outfits.map(o=>`<div class="card"><div class="row sp"><b>${esc(o.name)}</b><span><button class="btn sm sec" data-loado="${o.id}">Load</button> <button class="btn sm sec" data-plano="${o.id}">Plan</button> <button class="btn sm sec" data-delo="${o.id}">✕</button></span></div>${o.aiImage?`<img src="${o.aiImage}" class="prev" style="margin-top:8px;max-height:220px" alt="AI try-on">`:''}<div class="strip" style="margin-top:8px">${o.items.map(item).filter(Boolean).map(i=>thumb(i)).join('')}</div></div>`).join(''):'<p class="mut">No saved outfits yet.</p>'}`}
 
 let drag=null,lastPc=null;
 function initBoard(){const b=$('#board');if(!b)return;const W=b.clientWidth;
@@ -138,7 +197,7 @@ function addToBoardSilent(id){const i=item(id);const s=SLOT[i.cat]||[0,100,120];
 
 function vPlan(){const now=new Date();const m=S.calMonth||new Date(now.getFullYear(),now.getMonth(),1);S.calMonth=m;const first=new Date(m.getFullYear(),m.getMonth(),1),n=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
  const hist={};S.history.forEach(h=>{(hist[h.date]=hist[h.date]||[]).push(h)});let cells='';for(let k=0;k<first.getDay();k++)cells+='<div></div>';
- for(let d=1;d<=n;d++){const key=ymd(new Date(m.getFullYear(),m.getMonth(),d));const p=S.plans[key],h=hist[key];const img=(p||h?.[0])?item((p||h[0]).items[0])?.img:'';cells+=`<button class="d ${key===today()?'t':''}" data-day="${key}">${d}${img?`<div class="th" style="background-image:url('${img}');opacity:${h?1:.55}"></div>`:''}${p&&!h?'<span class="dot"></span>':''}</button>`}
+ for(let d=1;d<=n;d++){const key=ymd(new Date(m.getFullYear(),m.getMonth(),d));const p=S.plans[key],h=hist[key];const src=p||h?.[0]; const img=src?.aiImage||(src?item(src.items[0])?.img:'');cells+=`<button class="d ${key===today()?'t':''}" data-day="${key}">${d}${img?`<div class="th" style="background-image:url('${img}');opacity:${h?1:.55}"></div>`:''}${p&&!h?'<span class="dot"></span>':''}</button>`}
  const recent=[...S.history].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,15);
  return `<div class="row sp"><button class="btn sm sec" data-act="pm">‹</button><h2 style="margin:0">${m.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</h2><button class="btn sm sec" data-act="nm">›</button></div>
  <div class="cal" style="margin-top:12px">${['S','M','T','W','T','F','S'].map(x=>`<div class="h">${x}</div>`).join('')}${cells}</div>
@@ -167,15 +226,19 @@ function vMe(){const s=S.settings,p=S.profile;const tw=S.items.reduce((a,i)=>a+(
  <div class="row" style="margin-top:10px"><label class="btn sm sec" style="margin:0;color:var(--tx)">📷 Body photo<input type="file" accept="image/*" capture="user" id="bodycam" hidden></label><label class="btn sm sec" style="margin:0;color:var(--tx)">🖼 From gallery<input type="file" accept="image/*" id="bodygal" hidden></label>${p.photo?'<button class="btn sm sec" data-act="delbody">Delete photo</button>':''}</div>
  ${p.photo?`<div class="tog"><span>Use my body photo on Dress Me board</span><input type="checkbox" id="useboard" style="width:auto" ${p.useOnBoard?'checked':''}></div>`:''}
  <label>Stylized avatar skin tone</label><div class="chips">${['#f6d7c3','#e8b894','#c68c5f','#8d5a3b','#5a3825','#3b2417'].map(c=>`<button class="chip ${p.skin===c?'on':''}" data-skin="${c}" style="background:${c};width:34px;height:34px;padding:0"></button>`).join('')}</div>
- <p class="mut">Body photos stay on this phone only (IndexedDB). Nothing is uploaded.</p></div>
+ <p class="mut">By default, body photos stay on this phone only (IndexedDB). If you use <b>Try on for real</b>, photos are sent to your Worker and fal.ai for that request only.</p></div>
  <div class="card"><b>Stats</b><div class="row sp" style="margin-top:8px"><span>${S.items.length} items</span><span>${S.outfits.length} outfits</span><span>${tw} wears</span></div>${priced.length?`<p class="mut">Closet value $${spent.toFixed(0)} · avg cost per wear $${(spent/Math.max(1,priced.reduce((a,i)=>a+(i.wears||0),0))).toFixed(2)}</p>`:''}</div>
  <h3>Settings</h3><div class="card">
  <div class="tog"><span>Dark mode</span><input type="checkbox" id="dark" style="width:auto" ${s.dark?'checked':''}></div>
  <div class="tog"><span>Temperature</span><span class="chips"><button class="chip ${s.units==='F'?'on':''}" data-units="F">°F</button><button class="chip ${s.units==='C'?'on':''}" data-units="C">°C</button></span></div>
  <div class="tog"><span>Weather: ${esc(s.place||'not set')}</span><button class="btn sm sec" data-act="resetwx">Change</button></div>
+ <label>AI try-on Worker URL</label>
+ <input id="tryon_url" placeholder="https://britts-drip-tryon.YOUR.workers.dev" value="${esc(s.tryonWorker||'')}">
+ <p class="mut">Leave blank to disable AI try-on. Local mock: <code>http://127.0.0.1:8788</code>. Live: your Cloudflare Worker. Cost ~4¢ per garment image via fal.ai.</p>
+ <div class="row" style="margin-top:8px"><button class="btn sm sec" data-act="saveworker">Save Worker URL</button><button class="btn sm sec" data-act="pingworker">Test connection</button></div>
  <div class="row" style="margin-top:12px"><button class="btn sm sec" data-act="export">Export closet (JSON)</button><label class="btn sm sec" style="margin:0;color:var(--tx)">Import JSON<input type="file" accept="application/json,.json" id="imp" hidden></label></div>
  <button class="btn dng full" style="margin-top:14px" data-act="wipe">Delete all data</button></div>
- <p class="mut">Britts Drip sample app v1. All data lives on this device. Weather by Open-Meteo.com.</p>`}
+ <p class="mut">Britts Drip sample app v1. Closet data stays on this device. Weather by Open-Meteo.com. AI try-on by fal.ai when configured.</p>`}
 
 /* ===== Item editor ===== */
 let draft=null;
@@ -282,6 +345,45 @@ document.addEventListener('click',async e=>{const t=e.target.closest('[data-tab]
  if(A==='delbody'){S.profile.photo='';S.profile.useOnBoard=false;await kvSet('profile',S.profile);return render()}
  if(A==='resetwx'){Object.assign(S.settings,{lat:null,lon:null,place:''});S.wx=null;await kvSet('settings',S.settings);S.tab='today';return render()}
  if(A==='export'){const data={app:'britts-drip',version:1,exported:new Date().toISOString(),items:S.items,outfits:S.outfits,plans:S.plans,history:S.history,profile:{...S.profile,photo:''}};const b=new Blob([JSON.stringify(data)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='britts-drip-closet-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();return toast('Exported (body photo not included)')}
+ if(A==='aitryon'){
+  if(!workerBase()){toast('Set Worker URL in Me first (or use local mock http://127.0.0.1:8788)');S.tab='me';return render()}
+  if(!S.profile.photo){toast('Add a body photo in Me first');S.tab='me';return render()}
+  if(!S.dress.length)return toast('Add garments to the board first');
+  if(!confirm('Send your body photo and '+S.dress.length+' garment photo(s) to the try-on Worker / fal.ai? Cost ≈ $'+(S.dress.length*0.04).toFixed(2)+'.'))return;
+  const load=$('#aiload'); if(load) load.style.display='block';
+  try{
+    const ids=S.dress.map(d=>d.id);
+    const result=await runAiTryOn(ids);
+    openAiResult(result, ids);
+  }catch(err){toast(err.message||'Try-on failed'); if(load) load.style.display='none'}
+  return}
+ if(A==='aisave'){
+  const pack=window.__aiTryOn; if(!pack)return;
+  const name=($('#ai_name')?.value||'AI look').trim();
+  const o={id:uid(),name,items:pack.garmentIds,aiImage:pack.result.final,aiSteps:pack.result.steps.length,created:Date.now()};
+  S.outfits.unshift(o); await put('outfits',o); toast('AI outfit saved'); closeSheet(); return render()}
+ if(A==='aiwear'){
+  const pack=window.__aiTryOn; if(!pack)return;
+  await logWear(pack.garmentIds);
+  const o={id:uid(),name:($('#ai_name')?.value||'AI look').trim(),items:pack.garmentIds,aiImage:pack.result.final,aiSteps:pack.result.steps.length,created:Date.now()};
+  if(!S.outfits.some(x=>x.aiImage===o.aiImage)){S.outfits.unshift(o); await put('outfits',o)}
+  closeSheet(); return render()}
+ if(A==='aiplan'){
+  const pack=window.__aiTryOn; if(!pack)return;
+  S.plans[today()]={items:pack.garmentIds,aiImage:pack.result.final};
+  await kvSet('plans',S.plans);
+  const o={id:uid(),name:($('#ai_name')?.value||'AI look').trim(),items:pack.garmentIds,aiImage:pack.result.final,aiSteps:pack.result.steps.length,created:Date.now()};
+  S.outfits.unshift(o); await put('outfits',o);
+  toast('Planned for today'); closeSheet(); S.tab='plan'; return render()}
+ if(A==='saveworker'){
+  const v=($('#tryon_url')?.value||'').trim().replace(/\/$/,'');
+  S.settings.tryonWorker=v; await kvSet('settings',S.settings); toast(v?'Worker URL saved':'AI try-on disabled'); return render()}
+ if(A==='pingworker'){
+  const base=($('#tryon_url')?.value||workerBase()).trim().replace(/\/$/,'');
+  if(!base) return toast('Enter a Worker URL first');
+  try{const r=await fetch(base+'/health'); const j=await r.json(); toast(j.mock?'Mock Worker OK':'Worker OK'+(j.hasKey?' (key set)':' (no FAL_KEY yet)'))}
+  catch(err){toast('Could not reach Worker: '+(err.message||err))}
+  return}
  if(A==='wipe'){if(!confirm('Delete ALL items, outfits, photos and history from this device?'))return;for(const s of STORES)await clr(s);location.reload()}
 });
 $('#sheet').addEventListener('click',e=>{if(e.target.id==='sheet')closeSheet()});

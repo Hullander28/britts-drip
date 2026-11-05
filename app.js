@@ -46,7 +46,8 @@ async function quickCutout(src,tol=38){const im=await loadImg(src);const c=scale
  x.putImageData(d,0,0);return trim(c).toDataURL('image/png')}
 function trim(c){const x=c.getContext('2d'),d=x.getImageData(0,0,c.width,c.height).data;let a=c.width,b=c.height,e=0,f=0;for(let y=0;y<c.height;y++)for(let X=0;X<c.width;X++)if(d[(y*c.width+X)*4+3]>10){if(X<a)a=X;if(X>e)e=X;if(y<b)b=y;if(y>f)f=y}
  if(e<=a||f<=b)return c;const o=document.createElement('canvas');o.width=e-a+1;o.height=f-b+1;o.getContext('2d').drawImage(c,a,b,o.width,o.height,0,0,o.width,o.height);return o}
-async function aiCutout(src){const m=await import('https://esm.sh/@imgly/background-removal@1.7.0');const blob=await (await fetch(src)).blob();const out=await m.removeBackground(blob,{output:{format:'image/png'}});const im=await fileToImg(out);return trim(scale(im,700,'image/png')).toDataURL('image/png')}
+let _imgly=null;async function loadImgly(){if(_imgly)return _imgly;try{_imgly=await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm')}catch(e){_imgly=await import('https://esm.sh/@imgly/background-removal@1.7.0')}return _imgly}
+async function aiCutout(src){const m=await loadImgly();const blob=await (await fetch(src)).blob();const out=await m.removeBackground(blob,{output:{format:'image/png'}});const im=await fileToImg(out);return trim(scale(im,700,'image/png')).toDataURL('image/png')}
 function dominantColor(src){return loadImg(src).then(im=>{const c=scale(im,40,'image/png');const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let r=0,g=0,b=0,n=0;const W=c.width,H=c.height;
  for(let y=H*.25|0;y<H*.75;y++)for(let x=W*.25|0;x<W*.75;x++){const i=(y*W+x)*4;if(d[i+3]<128)continue;r+=d[i];g+=d[i+1];b+=d[i+2];n++}
  if(!n)return 'Multi';r/=n;g/=n;b/=n;let best='Gray',bd=1e9;for(const[k,v]of Object.entries(COLORS)){if(!v.startsWith('#'))continue;const h=v.length===4?v.replace(/#(.)(.)(.)/,'#$1$1$2$2$3$3'):v;const R=parseInt(h.slice(1,3),16),G=parseInt(h.slice(3,5),16),B=parseInt(h.slice(5,7),16);const dd=(R-r)**2+(G-g)**2+(B-b)**2;if(dd<bd){bd=dd;best=k}}return best})}
@@ -138,7 +139,7 @@ function openAiResult(result, garmentIds){
 function render(){document.documentElement.classList.toggle('dark',!!S.settings.dark);document.querySelector('meta[name=theme-color]').content=S.settings.dark?'#0f0f14':'#7c3aed';
  $('#tabs').innerHTML=TABS.map(([k,l])=>`<button data-tab="${k}" class="${S.tab===k?'on':''}" aria-label="${l}">${icon(k)}<span>${l}</span></button>`).join('');
  const v={today:vToday,closet:vCloset,dress:vDress,plan:vPlan,alerts:vAlerts,me:vMe}[S.tab]();$('#view').innerHTML=v;$('#topAct').innerHTML=S.profile.photo?`<img src="${S.profile.photo}" class="avatarImg" style="width:34px;height:34px" data-tab="me">`:'';
- if(S.tab==='dress')initBoard();window.scrollTo(0,0)}
+ if(S.tab==='dress'){if(S.dressMode==='swipe')initSwipe();else initBoard()}window.scrollTo(0,0)}
 const thumb=(i,extra='')=>`<div class="tile ${extra}" data-item="${i.id}"><div class="im" style="background-image:url('${i.img}')"></div>${i.fav?'<span class="fav">♥</span>':''}<div class="nm">${esc(i.name)}</div></div>`;
 
 function vToday(){const s=S.settings;let wx='';
@@ -169,8 +170,8 @@ function vCloset(){let L=S.items.filter(i=>(S.cat==='All'||i.cat===S.cat||(S.cat
  ${S.items.some(i=>i.laundry==='dirty')?`<button class="btn sec full" style="margin-top:12px" data-act="washall">Mark all dirty as clean</button>`:''}
  <button class="fab" data-act="add" aria-label="Add item">+</button>`}
 
-function vDress(){const picked=S.dress.map(d=>item(d.id)).filter(Boolean);
- return `<h2>Dress Me</h2><div class="board" id="board">${S.profile.photo&&S.profile.useOnBoard?`<img src="${S.profile.photo}" class="av" style="object-fit:contain;opacity:.95">`:avatarSVG(S.profile.skin)}
+function vDress(){if(S.dressMode==='swipe')return vSwipe();const picked=S.dress.map(d=>item(d.id)).filter(Boolean);
+ return `<h2>Dress Me</h2>${modeTabs()}<div class="board" id="board">${S.profile.photo&&S.profile.useOnBoard?`<img src="${S.profile.photo}" class="av" style="object-fit:contain;opacity:.95">`:avatarSVG(S.profile.skin)}
  ${S.dress.map((d,k)=>{const i=item(d.id);return i?`<img class="pc" src="${i.img}" data-pc="${k}" style="left:${d.x}px;top:${d.y}px;width:${d.w}px;z-index:${k+2}">`:''}).join('')}</div>
  <p class="mut">Drag pieces to arrange. Tap a piece below to add or remove. Use −/+ to resize the last piece you touched.</p>
  <div class="row"><button class="btn sm sec" data-act="szm">−</button><button class="btn sm sec" data-act="szp">+</button><button class="btn sm sec" data-act="clearb">Clear</button><button class="btn sm" data-act="saveb" ${picked.length?'':'disabled'}>Save outfit</button><button class="btn sm sec" data-act="wearb" ${picked.length?'':'disabled'}>Wear today</button></div>
@@ -400,7 +401,66 @@ document.addEventListener('change',async e=>{const id=e.target.id;
 });
 
 /* ===== Boot ===== */
-async function boot(reload){if(!reload)await openDB();S.items=(await all('items')).sort((a,b)=>b.created-a.created);S.outfits=(await all('outfits')).sort((a,b)=>b.created-a.created);S.plans=await kvGet('plans',{});S.history=await kvGet('history',[]);S.profile=Object.assign(S.profile,await kvGet('profile',{}));S.settings=Object.assign(S.settings,await kvGet('settings',{}));S.dress=await kvGet('dress',[]);S.dismissed=await kvGet('dismissed',[]);render();loadWeather()}
+async function boot(reload){if(!reload)await openDB();S.items=(await all('items')).sort((a,b)=>b.created-a.created);S.outfits=(await all('outfits')).sort((a,b)=>b.created-a.created);S.plans=await kvGet('plans',{});S.history=await kvGet('history',[]);S.profile=Object.assign(S.profile,await kvGet('profile',{}));S.settings=Object.assign(S.settings,await kvGet('settings',{}));S.dress=await kvGet('dress',[]);S.dismissed=await kvGet('dismissed',[]);S.dressMode=await kvGet('dressMode','board');S.swipe=await kvGet('swipe',{t:0,b:0});render();loadWeather()}
 boot().catch(e=>{$('#view').innerHTML='<div class="card">Storage unavailable: '+esc(e.message)+'. Private browsing can block it.</div>'});
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
+
+/* ===== Swipe try-on (free, on-device overlay) ===== */
+const SW_TOP=['Tops','Outerwear','Dresses'],SW_BOT=['Bottoms'];
+const SW_ZONE=i=>SW_TOP.includes(i.cat)?'t':SW_BOT.includes(i.cat)?'b':null;
+const SW_DEF={t:{x:50,y:34,s:46},b:{x:50,y:66,s:40},Dresses:{x:50,y:46,s:52},Outerwear:{x:50,y:34,s:52}};
+function swList(z){return S.items.filter(i=>SW_ZONE(i)===z)}
+function swCur(z){const L=swList(z);if(!L.length)return null;const n=L.length+1;const k=((S.swipe[z]%n)+n)%n;return k===L.length?null:L[k]}/* last slot = none */
+function swFit(i){const z=SW_ZONE(i);return Object.assign({},SW_DEF[i.cat]||SW_DEF[z],i.fit||{})}
+function swImg(i){return i.cut||i.img}
+function modeTabs(){const m=S.dressMode||'board';return `<div class="seg" style="display:flex;gap:6px;margin:0 0 10px"><button class="chip ${m==='board'?'on':''}" data-act="mode_board">Board</button><button class="chip ${m==='swipe'?'on':''}" data-act="mode_swipe">Swipe (free)</button></div>`}
+function swLayer(i,z){if(!i)return '';const f=swFit(i);return `<img class="swg" id="swg_${z}" src="${swImg(i)}" alt="" draggable="false" style="left:${f.x}%;top:${f.y}%;width:${f.s}%;z-index:${z==='t'?4:3}">`}
+function vSwipe(){const t=swCur('t'),b=swCur('b'),Lt=swList('t'),Lb=swList('b');const adj=S.swAdj||'';
+ const pos=(z,i,L)=>i?`${esc(i.name||i.cat)} · ${L.indexOf(i)+1}/${L.length}`:(L.length?`None · ${L.length+1}/${L.length+1}`:'No items');
+ const need=S.items.filter(i=>SW_ZONE(i)&&!i.cut).length;
+ const body=S.profile.photo?`<img src="${S.profile.photo}" class="swbody" alt="" draggable="false">`:`<div class="swbody">${avatarSVG(S.profile.skin)}</div>`;
+ const af=adj&&(adj==='t'?t:b);const f=af?swFit(af):null;
+ return `<h2>Dress Me</h2>${modeTabs()}
+ <div class="swstage" id="swstage">${body}${swLayer(b,'b')}${swLayer(t,'t')}
+  <div class="swz" data-z="t"><button class="swa l" data-act="sw_t_prev" aria-label="Previous top">‹</button><span class="swlab">${pos('t',t,Lt)}</span><button class="swa r" data-act="sw_t_next" aria-label="Next top">›</button></div>
+  <div class="swz" data-z="b"><button class="swa l" data-act="sw_b_prev" aria-label="Previous bottom">‹</button><span class="swlab">${pos('b',b,Lb)}</span><button class="swa r" data-act="sw_b_next" aria-label="Next bottom">›</button></div>
+  ${adj?`<div class="swadjtag">Adjusting ${adj==='t'?'top':'bottom'}: drag / pinch</div>`:''}</div>
+ <p class="mut">Swipe the top half for tops, the bottom half for bottoms. Free and instant, nothing leaves your phone.</p>
+ <div class="row"><button class="btn sm sec ${adj==='t'?'on':''}" data-act="sw_adj_t" ${t?'':'disabled'}>Adjust top</button><button class="btn sm sec ${adj==='b'?'on':''}" data-act="sw_adj_b" ${b?'':'disabled'}>Adjust bottom</button><button class="btn sm" data-act="sw_save" ${t||b?'':'disabled'}>Save outfit</button><button class="btn sm sec" data-act="sw_wear" ${t||b?'':'disabled'}>Wear today</button></div>
+ ${f?`<div class="card" style="margin-top:10px"><label>Left/right</label><input type="range" id="swr_x" min="0" max="100" step="0.5" value="${f.x}"><label>Up/down</label><input type="range" id="swr_y" min="0" max="100" step="0.5" value="${f.y}"><label>Size</label><input type="range" id="swr_s" min="10" max="120" step="0.5" value="${f.s}"><div class="row" style="margin-top:8px"><button class="btn sm" data-act="sw_fit_save">Save fit for this item</button><button class="btn sm sec" data-act="sw_fit_reset">Reset</button><button class="btn sm sec" data-act="sw_adj_done">Done</button></div></div>`:''}
+ <div class="card" style="margin-top:10px"><div class="row sp"><b>Cutouts</b><span class="badge">free</span></div><p class="mut" style="margin:6px 0" id="swcutmsg">${need?need+' top/bottom item(s) still have a background.':'All tops and bottoms have cutouts.'} Removal runs on this phone (first run downloads a ~40 MB model once).</p><button class="btn sm sec" data-act="sw_cutall" ${need?'':'disabled'}>Make cutouts</button></div>
+ <p class="mut" style="margin-top:10px">Want a realistic fit? Switch to Board and use “Try on for real” (~4¢).</p>
+ ${S.items.length?'':'<div class="card mut">Add clothes in the Closet tab first.</div>'}`}
+function swSetFit(z,f){const g=$('#swg_'+z);if(g){g.style.left=f.x+'%';g.style.top=f.y+'%';g.style.width=f.s+'%'}}
+let swLive=null;
+function initSwipe(){const st=$('#swstage');if(!st)return;const P=new Map();let g=null;
+ st.addEventListener('pointerdown',e=>{if(e.target.closest('.swa'))return;P.set(e.pointerId,{x:e.clientX,y:e.clientY});st.setPointerCapture?.(e.pointerId);
+  const r=st.getBoundingClientRect();const adj=S.swAdj;
+  if(adj){const i=swCur(adj);if(!i)return;const f=swLive&&swLive.id===i.id?swLive.f:swFit(i);swLive={id:i.id,z:adj,f:{...f}};g={mode:'adj',r,f0:{...swLive.f},p0:[...P.values()].map(p=>({...p})),d0:0}}
+  else g={mode:'sw',z:(e.clientY-r.top)<r.height/2?'t':'b',x0:e.clientX,y0:e.clientY}});
+ st.addEventListener('pointermove',e=>{if(!P.has(e.pointerId)||!g)return;P.set(e.pointerId,{x:e.clientX,y:e.clientY});e.preventDefault();
+  if(g.mode==='adj'){const pts=[...P.values()];if(pts.length>=2){const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);if(!g.d0){g.d0=d;g.f0={...swLive.f}}swLive.f.s=Math.max(10,Math.min(120,g.f0.s*d/g.d0))}
+   else{const p0=g.p0[0]||pts[0];swLive.f.x=Math.max(0,Math.min(100,g.f0.x+(pts[0].x-p0.x)/g.r.width*100));swLive.f.y=Math.max(0,Math.min(100,g.f0.y+(pts[0].y-p0.y)/g.r.height*100))}
+   swSetFit(swLive.z,swLive.f);['x','y','s'].forEach(k=>{const s=$('#swr_'+k);if(s)s.value=swLive.f[k]})}});
+ const up=e=>{if(!P.has(e.pointerId))return;P.delete(e.pointerId);if(!g)return;
+  if(g.mode==='sw'){const dx=e.clientX-g.x0,dy=e.clientY-g.y0;if(Math.abs(dx)>40&&Math.abs(dx)>Math.abs(dy)*1.3)swStep(g.z,dx<0?1:-1);g=null}
+  else{if(P.size===0)g=null;else{g.p0=[...P.values()].map(p=>({...p}));g.f0={...swLive.f};g.d0=0}}};
+ st.addEventListener('pointerup',up);st.addEventListener('pointercancel',up)}
+function swStep(z,d){S.swipe[z]=(S.swipe[z]||0)+d;const n=swList(z).length+1;S.swipe[z]=((S.swipe[z]%n)+n)%n;kvSet('swipe',S.swipe);swLive=null;render()}
+function swIds(){return [swCur('t'),swCur('b')].filter(Boolean).filter((i,k,a)=>!(i.cat==='Dresses'&&k===1)).map(i=>i.id)}
+async function makeCutout(src,onMsg){try{onMsg&&onMsg('Removing background (AI, on-device)…');return await Promise.race([aiCutout(src),new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),90000))])}catch(e){onMsg&&onMsg('AI cutout unavailable, using quick cutout…');return await quickCutout(src)}}
+let swQ=Promise.resolve();
+function queueCutout(id){swQ=swQ.then(async()=>{const i=item(id);if(!i||i.cut||!SW_ZONE(i))return;try{i.cut=await makeCutout(i.orig||i.img);await put('items',i)}catch(e){}}).catch(()=>{});return swQ}
+const _saveItem0=saveItem;saveItem=async function(it){await _saveItem0(it);if(!it.cut&&SW_ZONE(it))queueCutout(it.id)};
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-act]');if(!t)return;const A=t.dataset.act;if(!A.startsWith('sw_')&&!A.startsWith('mode_'))return;e.stopImmediatePropagation();
+ if(A==='mode_board'||A==='mode_swipe'){S.dressMode=A.slice(5);S.swAdj='';swLive=null;await kvSet('dressMode',S.dressMode);return render()}
+ const m=A.match(/^sw_([tb])_(prev|next)$/);if(m)return swStep(m[1],m[2]==='next'?1:-1);
+ if(A==='sw_adj_t'||A==='sw_adj_b'){const z=A.slice(-1);S.swAdj=S.swAdj===z?'':z;swLive=null;return render()}
+ if(A==='sw_adj_done'){S.swAdj='';swLive=null;return render()}
+ if(A==='sw_fit_save'||A==='sw_fit_reset'){const i=swCur(S.swAdj);if(!i)return;if(A==='sw_fit_reset'){delete i.fit;swLive=null}else{i.fit={...(swLive&&swLive.id===i.id?swLive.f:swFit(i))}}await put('items',i);toast(A==='sw_fit_reset'?'Fit reset':'Fit saved for '+(i.name||i.cat));return render()}
+ if(A==='sw_save'){const ids=swIds();if(!ids.length)return;const name=prompt('Name this outfit','My outfit '+(S.outfits.length+1));if(name===null)return;const o={id:uid(),name:name||'Outfit',items:ids,created:Date.now()};S.outfits.unshift(o);await put('outfits',o);toast('Outfit saved');return render()}
+ if(A==='sw_wear'){const ids=swIds();if(ids.length)await logWear(ids);return render()}
+ if(A==='sw_cutall'){const L=S.items.filter(i=>SW_ZONE(i)&&!i.cut);t.disabled=true;const msg=$('#swcutmsg');let k=0;for(const i of L){k++;const say=s=>{if(msg)msg.textContent=`${k}/${L.length}: ${s}`};try{i.cut=await makeCutout(i.orig||i.img,say);await put('items',i)}catch(err){}}toast('Cutouts done');return render()}
+},true);
+document.addEventListener('input',e=>{const m=e.target.id&&e.target.id.match(/^swr_([xys])$/);if(!m)return;const i=swCur(S.swAdj);if(!i)return;if(!swLive||swLive.id!==i.id)swLive={id:i.id,z:S.swAdj,f:swFit(i)};swLive.f[m[1]]=+e.target.value;swSetFit(S.swAdj,swLive.f)});

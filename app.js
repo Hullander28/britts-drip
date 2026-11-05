@@ -31,7 +31,46 @@ const icon=n=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 const TABS=[['today','Today'],['closet','Closet'],['dress','Dress Me'],['plan','Plan'],['alerts','Alerts'],['me','Me']];
 
 /* ===== Avatar (stylized SVG) ===== */
-function avatarSVG(skin){return `<svg class="av" viewBox="0 0 100 220" xmlns="http://www.w3.org/2000/svg"><g fill="${skin}" stroke="#0002"><circle cx="50" cy="22" r="14"/><rect x="45" y="34" width="10" height="8"/><path d="M30 44h40l6 50h-8l-4-30v40H36V64l-4 30h-8z"/><rect x="36" y="104" width="12" height="100" rx="5"/><rect x="52" y="104" width="12" height="100" rx="5"/></g></svg>`}
+function shadeHex(h,a){h=String(h||'#e8b894').replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16)||0xe8b894;const f=v=>Math.max(0,Math.min(255,Math.round(a<0?v*(1+a):v+(255-v)*a)));return '#'+[n>>16,(n>>8)&255,n&255].map(f).map(v=>v.toString(16).padStart(2,'0')).join('')}
+const AV_HAIR=['long','bob','bun','pixie','curly','ponytail'],AV_BODY=['slim','average','curvy','athletic'],AV_HC={Black:'#1c1512',Brown:'#4a2f1f',Auburn:'#7a3420',Blonde:'#d8b26e',Red:'#a0381e',Gray:'#9a958f',Pink:'#e58fb5'};
+function avatarSVG(skin){const P=S.profile||{},sk=skin||'#e8b894',hc=AV_HC[P.hairColor]||P.hairColor||AV_HC.Brown,hs=AV_HAIR.includes(P.hair)?P.hair:'long';
+ const B={slim:[14,8.5,12.5],average:[15.5,10,14.5],curvy:[15.5,9.5,17.5],athletic:[17.5,11.5,14]}[AV_BODY.includes(P.body)?P.body:'average'];const[sh,w,h]=B,c=50;
+ const d=shadeHex(sk,-.22),l=shadeHex(sk,.18),hd=shadeHex(hc,-.3),hl=shadeHex(hc,.25),uw=shadeHex(sk,.55),uwd=shadeHex(sk,.3),lip=shadeHex('#c46a72',0);
+ const g=`av${sk.replace('#','')}${hc.replace('#','')}`;
+ const L=c-sh,R=c+sh;
+ const body=`M${c-4},33 C${c-4},37 ${L+3},38 ${L},41 C${L-1.5},44 ${L-1},50 ${L+2},55 C${c-w-1},70 ${c-w},84 ${c-w},92 C${c-w-1},98 ${c-h},104 ${c-h},112 C${c-h},126 ${c-10},140 ${c-8.5},156 C${c-8},170 ${c-7},188 ${c-5.5},201 L${c-2},201 C${c-2.5},186 ${c-2},168 ${c-2.5},156 C${c-2},140 ${c-1.2},128 ${c},119 C${c+1.2},128 ${c+2},140 ${c+2.5},156 C${c+2},168 ${c+2.5},186 ${c+2},201 L${c+5.5},201 C${c+7},188 ${c+8},170 ${c+8.5},156 C${c+10},140 ${c+h},126 ${c+h},112 C${c+h},104 ${c+w+1},98 ${c+w},92 C${c+w},84 ${c+w+1},70 ${R-2},55 C${R+1},50 ${R+1.5},44 ${R},41 C${R-3},38 ${c+4},37 ${c+4},33 Z`;
+ const arm=s=>{const x=c+s*sh;return `M${x-s*0.5},41.5 C${x+s*4},45 ${x+s*5},60 ${x+s*5.5},74 C${x+s*6},86 ${x+s*7.5},100 ${x+s*8.5},113 L${x+s*5.5},114 C${x+s*4.2},102 ${x+s*2.5},88 ${x+s*1.8},76 C${x+s*1.2},66 ${x-s*0.5},58 ${x-s*2.5},53 Z`};
+ const hand=s=>{const x=c+s*(sh+7);return `<ellipse cx="${x}" cy="118" rx="2.6" ry="4.6" transform="rotate(${-s*10} ${x} 118)"/>`};
+ const back={long:`<path d="M${c-11},16 C${c-15},40 ${c-14},56 ${c-12},62 L${c+12},62 C${c+14},56 ${c+15},40 ${c+11},16 Z" fill="url(#h${g})"/>`,bob:`<path d="M${c-11.5},16 C${c-13},28 ${c-12.5},34 ${c-10},37 L${c+10},37 C${c+12.5},34 ${c+13},28 ${c+11.5},16 Z" fill="url(#h${g})"/>`,bun:`<circle cx="${c}" cy="5" r="6" fill="url(#h${g})"/>`,pixie:'',curly:`<g fill="url(#h${g})">${[[-11,14],[-13,22],[-13,30],[-11,37],[11,14],[13,22],[13,30],[11,37],[-6,6],[0,4],[6,6]].map(([x,y])=>`<circle cx="${c+x}" cy="${y}" r="5.5"/>`).join('')}</g>`,ponytail:`<path d="M${c+6},8 C${c+18},6 ${c+19},26 ${c+15},44 C${c+14},34 ${c+12},22 ${c+7},14 Z" fill="url(#h${g})"/>`}[hs];
+ const front={long:`M${c-10.5},20 C${c-11},8 ${c-4},5 ${c},5 C${c+6},5 ${c+11.5},9 ${c+10.5},22 C${c+8},13 ${c+2},11 ${c-3},13 C${c-6},14 ${c-9},17 ${c-10.5},20 Z`,bob:`M${c-11},22 C${c-12},8 ${c-4},5 ${c},5 C${c+5},5 ${c+12},8 ${c+11},22 C${c+9},15 ${c+4},13 ${c},14 C${c-5},13 ${c-9},15 ${c-11},22 Z`,bun:`M${c-10.2},19 C${c-10.5},9 ${c-4},6.5 ${c},6.5 C${c+4},6.5 ${c+10.5},9 ${c+10.2},19 C${c+7},12 ${c-7},12 ${c-10.2},19 Z`,pixie:`M${c-10.4},20 C${c-11},8 ${c-3},5 ${c+1},5.5 C${c+8},6 ${c+11},11 ${c+10.4},18 C${c+6},14 ${c+2},11 ${c-4},14 C${c-7},15 ${c-9},17 ${c-10.4},20 Z`,curly:`M${c-10.5},20 C${c-11},8 ${c-4},5 ${c},5 C${c+4},5 ${c+11},8 ${c+10.5},20 C${c+7},12 ${c-7},12 ${c-10.5},20 Z`,ponytail:`M${c-10.2},19 C${c-10.5},9 ${c-4},6.5 ${c},6.5 C${c+4},6.5 ${c+10.5},9 ${c+10.2},19 C${c+7},12 ${c-7},12 ${c-10.2},19 Z`}[hs];
+ return `<svg class="av" viewBox="0 0 100 220" xmlns="http://www.w3.org/2000/svg" aria-label="Avatar"><defs>
+ <linearGradient id="s${g}" x1="0" x2="1"><stop offset="0" stop-color="${d}"/><stop offset=".35" stop-color="${sk}"/><stop offset=".55" stop-color="${l}"/><stop offset=".72" stop-color="${sk}"/><stop offset="1" stop-color="${d}"/></linearGradient>
+ <radialGradient id="f${g}" cx=".45" cy=".4" r=".7"><stop offset="0" stop-color="${l}"/><stop offset=".7" stop-color="${sk}"/><stop offset="1" stop-color="${d}"/></radialGradient>
+ <linearGradient id="h${g}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${hl}"/><stop offset=".6" stop-color="${hc}"/><stop offset="1" stop-color="${hd}"/></linearGradient>
+ <linearGradient id="u${g}" x1="0" x2="1"><stop offset="0" stop-color="${uwd}"/><stop offset=".5" stop-color="${uw}"/><stop offset="1" stop-color="${uwd}"/></linearGradient>
+ <radialGradient id="g${g}"><stop offset="0" stop-color="#000" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
+ <ellipse cx="50" cy="206" rx="22" ry="4.5" fill="url(#g${g})"/>
+ ${back}
+ <g fill="url(#s${g})" stroke="${d}" stroke-width=".35" stroke-linejoin="round"><path d="${arm(-1)}"/><path d="${arm(1)}"/>${hand(-1)}${hand(1)}<path d="${body}"/>
+ <path d="M${c-5.5},201 C${c-9},202 ${c-10},205 ${c-7},206 L${c-2},206 C${c-1.6},204 ${c-1.8},202 ${c-2},201 Z"/><path d="M${c+5.5},201 C${c+9},202 ${c+10},205 ${c+7},206 L${c+2},206 C${c+1.6},204 ${c+1.8},202 ${c+2},201 Z"/>
+ <rect x="${c-3.4}" y="28" width="6.8" height="10" rx="3"/></g>
+ <ellipse cx="${c}" cy="19.5" rx="9.6" ry="12.2" fill="url(#f${g})" stroke="${d}" stroke-width=".35"/>
+ <g fill="none" stroke="${d}" stroke-width=".35" opacity=".6"><path d="M${c-3},56 C${c-2},60 ${c+2},60 ${c+3},56"/><path d="M${c},86 v3"/><path d="M${c-6},152 q1,2 0,4M${c+6},152 q-1,2 0,4"/></g>
+ <path d="M${L+2.5},53.5 Q${c-6},48.5 ${c},55 Q${c+6},48.5 ${R-2.5},53.5 L${R-3.2},63 Q${c},65.5 ${L+3.2},63 Z" fill="url(#u${g})" stroke="${uwd}" stroke-width=".4"/>
+ <path d="M${c-h+0.4},105 C${c-6},104 ${c+6},104 ${c+h-0.4},105 C${c+h-1},110 ${c+6},116 ${c+1.6},121 L${c-1.6},121 C${c-6},116 ${c-h+1},110 ${c-h+0.4},105 Z" fill="url(#u${g})" stroke="${uwd}" stroke-width=".4"/>
+ <g><path d="M${c-6.2},16.3 q2.2,-1.4 4.3,-.2" stroke="${hd}" stroke-width=".8" fill="none" stroke-linecap="round"/><path d="M${c+1.9},16.1 q2.1,-1.2 4.3,.2" stroke="${hd}" stroke-width=".8" fill="none" stroke-linecap="round"/>
+ <ellipse cx="${c-3.9}" cy="19.6" rx="1.5" ry="1" fill="#fff"/><ellipse cx="${c+3.9}" cy="19.6" rx="1.5" ry="1" fill="#fff"/><circle cx="${c-3.8}" cy="19.6" r=".85" fill="#2a1c15"/><circle cx="${c+4}" cy="19.6" r=".85" fill="#2a1c15"/>
+ <path d="M${c-5.5},19 q1.6,-1.3 3.2,0M${c+2.3},19 q1.6,-1.3 3.2,0" stroke="#2a1c15" stroke-width=".45" fill="none"/>
+ <path d="M${c-.3},21 q-.9,2.6 .2,3.1 q.8,.2 1,-.2" stroke="${d}" stroke-width=".4" fill="none"/>
+ <path d="M${c-2.6},27 q1.3,-.9 2.6,-.3 q1.3,-.6 2.6,.3 q-1.3,1.6 -2.6,1.5 q-1.3,.1 -2.6,-1.5 Z" fill="${lip}" opacity=".85"/>
+ <ellipse cx="${c-6}" cy="24" rx="2" ry="1.1" fill="#e98a8a" opacity=".18"/><ellipse cx="${c+6}" cy="24" rx="2" ry="1.1" fill="#e98a8a" opacity=".18"/></g>
+ <path d="${front}" fill="url(#h${g})"/>${hs==='bun'||hs==='ponytail'?`<path d="M${c-4},8 C${c-1},7 ${c+3},7.5 ${c+6},9" stroke="${hl}" stroke-width=".5" fill="none" opacity=".7"/>`:''}
+ </svg>`}
+function avatarOptions(p){return `<label>Avatar hairstyle</label><div class="chips">${AV_HAIR.map(x=>`<button class="chip ${(p.hair||'long')===x?'on':''}" data-act="av_set" data-k="hair|${x}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>
+ <label>Hair color</label><div class="chips">${Object.entries(AV_HC).map(([n,v])=>`<button class="chip ${(p.hairColor||'Brown')===n?'on':''}" data-act="av_set" data-k="hairColor|${n}" style="background:${v};width:34px;height:34px;padding:0" aria-label="${n}"></button>`).join('')}</div>
+ <label>Body shape</label><div class="chips">${AV_BODY.map(x=>`<button class="chip ${(p.body||'average')===x?'on':''}" data-act="av_set" data-k="body|${x}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>
+ <div class="avprev">${avatarSVG(p.skin)}</div>`}
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-act="av_set"]');if(!t)return;e.stopImmediatePropagation();const[k,v]=t.dataset.k.split('|');S.profile[k]=v;await kvSet('profile',S.profile);render()},true);
 
 /* ===== Images ===== */
 function fileToImg(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=u})}
@@ -226,7 +265,7 @@ function vMe(){const s=S.settings,p=S.profile;const tw=S.items.reduce((a,i)=>a+(
  return `<h2>Profile</h2><div class="card"><div class="row" style="flex-wrap:nowrap">${p.photo?`<img src="${p.photo}" class="avatarImg">`:`<div class="avatarImg" style="display:flex;align-items:center;justify-content:center">👤</div>`}<div style="flex:1"><input id="pname" placeholder="Your name" value="${esc(p.name)}"></div></div>
  <div class="row" style="margin-top:10px"><label class="btn sm sec" style="margin:0;color:var(--tx)">📷 Body photo<input type="file" accept="image/*" capture="user" id="bodycam" hidden></label><label class="btn sm sec" style="margin:0;color:var(--tx)">🖼 From gallery<input type="file" accept="image/*" id="bodygal" hidden></label>${p.photo?'<button class="btn sm sec" data-act="delbody">Delete photo</button>':''}</div>
  ${p.photo?`<div class="tog"><span>Use my body photo on Dress Me board</span><input type="checkbox" id="useboard" style="width:auto" ${p.useOnBoard?'checked':''}></div>`:''}
- <label>Stylized avatar skin tone</label><div class="chips">${['#f6d7c3','#e8b894','#c68c5f','#8d5a3b','#5a3825','#3b2417'].map(c=>`<button class="chip ${p.skin===c?'on':''}" data-skin="${c}" style="background:${c};width:34px;height:34px;padding:0"></button>`).join('')}</div>
+ <label>Stylized avatar skin tone</label><div class="chips">${['#f6d7c3','#e8b894','#c68c5f','#8d5a3b','#5a3825','#3b2417'].map(c=>`<button class="chip ${p.skin===c?'on':''}" data-skin="${c}" style="background:${c};width:34px;height:34px;padding:0"></button>`).join('')}</div>${avatarOptions(p)}
  <p class="mut">By default, body photos stay on this phone only (IndexedDB). If you use <b>Try on for real</b>, photos are sent to your Worker and fal.ai for that request only.</p></div>
  <div class="card"><b>Stats</b><div class="row sp" style="margin-top:8px"><span>${S.items.length} items</span><span>${S.outfits.length} outfits</span><span>${tw} wears</span></div>${priced.length?`<p class="mut">Closet value $${spent.toFixed(0)} · avg cost per wear $${(spent/Math.max(1,priced.reduce((a,i)=>a+(i.wears||0),0))).toFixed(2)}</p>`:''}</div>
  <h3>Settings</h3><div class="card">
@@ -409,7 +448,7 @@ if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
 /* ===== Swipe try-on (free, on-device overlay) ===== */
 const SW_TOP=['Tops','Outerwear','Dresses'],SW_BOT=['Bottoms'],SW_SHOE=['Shoes'];
 const SW_ZONE=i=>SW_TOP.includes(i.cat)?'t':SW_BOT.includes(i.cat)?'b':SW_SHOE.includes(i.cat)?'s':null;
-const SW_DEF={t:{x:50,y:32,s:46},b:{x:50,y:62,s:40},s:{x:50,y:91,s:34},Dresses:{x:50,y:44,s:52},Outerwear:{x:50,y:32,s:52}};
+const SW_DEF={t:{x:50,y:35,s:40},b:{x:50,y:70,s:27},s:{x:50,y:93.5,s:24},Dresses:{x:50,y:44,s:52},Outerwear:{x:50,y:32,s:52}};
 const ZN={t:'top',b:'bottom',s:'shoes'};
 const isShop=i=>(i.tags||[]).includes('Shop');
 const safeSrc=s=>typeof s==='string'&&/^(data:image\/|https:\/\/|blob:)/i.test(s)?s:'';

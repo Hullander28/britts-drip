@@ -50,8 +50,8 @@ label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
 input,select,textarea{font-size:16px}/* prevents iOS zoom */
 body{-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
 header{padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right))}
-.swstage{position:relative;width:100%;max-width:420px;margin:0 auto;aspect-ratio:3/5;max-height:calc(100dvh - 260px - env(safe-area-inset-bottom));border-radius:18px;overflow:hidden;background:linear-gradient(#f4f0ff,#ece6fb);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-.dark .swstage{background:linear-gradient(#1d1b26,#15131c)}
+.swstage{position:relative;width:100%;max-width:420px;margin:0 auto;aspect-ratio:3/5;max-height:calc(100dvh - 260px - env(safe-area-inset-bottom));border-radius:18px;overflow:hidden;background:radial-gradient(120% 70% at 50% 25%,#fff 0%,#f3eefc 45%,#e4dcf6 100%);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.dark .swstage{background:radial-gradient(120% 70% at 50% 25%,#2c2940,#1a1824 55%,#100f16)}
 .swbody{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:flex;justify-content:center;pointer-events:none}
 .swbody .av{height:100%;width:auto}
 .swg{position:absolute;transform:translate(-50%,-50%);pointer-events:none;filter:drop-shadow(0 3px 6px #0003);will-change:left,top,width}
@@ -68,3 +68,5 @@ header{padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16
 .ministage{position:relative;width:130px;height:240px;margin:8px auto}.ministage .av{height:100%;width:100%}.ministage img{position:absolute;transform:translate(-50%,-50%)}
 .buybar{margin-top:10px}.buybar .row{margin:4px 0}
 .instbar{position:fixed;left:10px;right:10px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:50;background:var(--card);color:var(--tx);border:1px solid var(--ln);border-radius:16px;padding:12px;display:flex;gap:8px;align-items:center;box-shadow:0 6px 24px #0003;font-size:14px}.instbar>div{flex:1}.ishare{font-weight:700;color:var(--ac)}
+.avprev{width:110px;height:230px;margin:8px auto;border-radius:16px;background:radial-gradient(120% 70% at 50% 25%,#fff,#e9e2f7)}.avprev .av{width:100%;height:100%}
+.board .av{opacity:1}

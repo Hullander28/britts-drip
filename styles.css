@@ -70,3 +70,8 @@ header{padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16
 .instbar{position:fixed;left:10px;right:10px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:50;background:var(--card);color:var(--tx);border:1px solid var(--ln);border-radius:16px;padding:12px;display:flex;gap:8px;align-items:center;box-shadow:0 6px 24px #0003;font-size:14px}.instbar>div{flex:1}.ishare{font-weight:700;color:var(--ac)}
 .avprev{width:110px;height:230px;margin:8px auto;border-radius:16px;background:radial-gradient(120% 70% at 50% 25%,#fff,#e9e2f7)}.avprev .av{width:100%;height:100%}
 .board .av{opacity:1}
+.av .seg{transform-box:view-box}
+.av.posing .seg{transition:transform .6s cubic-bezier(.45,.05,.25,1)}
+.swstage.posing .swg{transition:left .6s cubic-bezier(.45,.05,.25,1),top .6s cubic-bezier(.45,.05,.25,1),width .6s cubic-bezier(.45,.05,.25,1)}
+.board.posing img.pc{transition:transform .6s cubic-bezier(.45,.05,.25,1)}
+.posechips{margin:-2px 0 10px}

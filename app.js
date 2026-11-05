@@ -407,40 +407,55 @@ if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWor
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
 
 /* ===== Swipe try-on (free, on-device overlay) ===== */
-const SW_TOP=['Tops','Outerwear','Dresses'],SW_BOT=['Bottoms'];
-const SW_ZONE=i=>SW_TOP.includes(i.cat)?'t':SW_BOT.includes(i.cat)?'b':null;
-const SW_DEF={t:{x:50,y:34,s:46},b:{x:50,y:66,s:40},Dresses:{x:50,y:46,s:52},Outerwear:{x:50,y:34,s:52}};
+const SW_TOP=['Tops','Outerwear','Dresses'],SW_BOT=['Bottoms'],SW_SHOE=['Shoes'];
+const SW_ZONE=i=>SW_TOP.includes(i.cat)?'t':SW_BOT.includes(i.cat)?'b':SW_SHOE.includes(i.cat)?'s':null;
+const SW_DEF={t:{x:50,y:32,s:46},b:{x:50,y:62,s:40},s:{x:50,y:91,s:34},Dresses:{x:50,y:44,s:52},Outerwear:{x:50,y:32,s:52}};
+const ZN={t:'top',b:'bottom',s:'shoes'};
+const isShop=i=>(i.tags||[]).includes('Shop');
+const safeSrc=s=>typeof s==='string'&&/^(data:image\/|https:\/\/|blob:)/i.test(s)?s:'';
+const safeUrl=s=>typeof s==='string'&&/^https?:\/\//i.test(s)?s:'';
 function swList(z){return S.items.filter(i=>SW_ZONE(i)===z)}
-function swCur(z){const L=swList(z);if(!L.length)return null;const n=L.length+1;const k=((S.swipe[z]%n)+n)%n;return k===L.length?null:L[k]}/* last slot = none */
-function swFit(i){const z=SW_ZONE(i);return Object.assign({},SW_DEF[i.cat]||SW_DEF[z],i.fit||{})}
-function swImg(i){return i.cut||i.img}
-function modeTabs(){const m=S.dressMode||'board';return `<div class="seg" style="display:flex;gap:6px;margin:0 0 10px"><button class="chip ${m==='board'?'on':''}" data-act="mode_board">Board</button><button class="chip ${m==='swipe'?'on':''}" data-act="mode_swipe">Swipe (free)</button></div>`}
-function swLayer(i,z){if(!i)return '';const f=swFit(i);return `<img class="swg" id="swg_${z}" src="${swImg(i)}" alt="" draggable="false" style="left:${f.x}%;top:${f.y}%;width:${f.s}%;z-index:${z==='t'?4:3}">`}
-function vSwipe(){const t=swCur('t'),b=swCur('b'),Lt=swList('t'),Lb=swList('b');const adj=S.swAdj||'';
- const pos=(z,i,L)=>i?`${esc(i.name||i.cat)} · ${L.indexOf(i)+1}/${L.length}`:(L.length?`None · ${L.length+1}/${L.length+1}`:'No items');
- const need=S.items.filter(i=>SW_ZONE(i)&&!i.cut).length;
+function swCur(z){if(z&&z.startsWith('a:'))return item(z.slice(2))||null;const L=swList(z);if(!L.length)return null;const n=L.length+1;const k=(((S.swipe[z]||0)%n)+n)%n;return k===L.length?null:L[k]}
+function accDef(i){const n=((i.name||'')+' '+(i.tags||[]).join(' ')).toLowerCase();
+ if(/hat|cap|beanie|beret/.test(n))return{x:50,y:7,s:30};if(/bag|purse|tote|clutch|backpack/.test(n))return{x:78,y:55,s:30};
+ if(/necklace|chain|pendant|scarf/.test(n))return{x:50,y:24,s:20};if(/earring|ring|watch|bracelet/.test(n))return{x:70,y:52,s:10};if(/glass/.test(n))return{x:50,y:10,s:18};return{x:50,y:30,s:20}}
+function swFit(i){const z=SW_ZONE(i);return Object.assign({},i.cat==='Accessories'?accDef(i):(SW_DEF[i.cat]||SW_DEF[z]||{x:50,y:40,s:30}),i.fit||{})}
+function swImg(i){return safeSrc(i.cut)||safeSrc(i.img)}
+const lid=k=>'swg_'+k.replace(':','_');
+function buyBar(ids){const L=ids.map(item).filter(i=>i&&isShop(i)&&safeUrl(i.buyUrl));return L.length?`<div class="card buybar">${L.map(i=>`<div class="row sp"><span>🛍 ${esc(i.name)}${i.price?' · $'+esc(i.price):''}</span><a class="btn sm" href="${esc(safeUrl(i.buyUrl))}" target="_blank" rel="noopener sponsored">Buy</a></div>`).join('')}</div>`:''}
+function modeTabs(){const m=S.dressMode||'board';return `<div class="seg" style="display:flex;gap:6px;margin:0 0 10px"><button class="chip ${m==='board'?'on':''}" data-act="mode_board">Board</button><button class="chip ${m==='swipe'?'on':''}" data-act="mode_swipe">Swipe (free)</button>${m==='swipe'?'<button class="chip" data-act="sw_shuffle">🔀 Shuffle</button>':''}</div>${m==='board'?buyBar(S.dress.map(d=>d.id)):''}`}
+function swLayer(i,k,z){if(!i)return '';const f=swFit(i);return `<img class="swg" id="${lid(k)}" src="${swImg(i)}" alt="" draggable="false" style="left:${f.x}%;top:${f.y}%;width:${f.s}%;z-index:${z}">`}
+function swAccs(){S.swAcc=(S.swAcc||[]).filter(id=>item(id));return S.swAcc.map(item)}
+function vSwipe(){const t=swCur('t'),b=swCur('b'),s=swCur('s');const adj=S.swAdj||'';const accs=swAccs();
+ const pos=(z,i)=>{const L=swList(z);return i?`${isShop(i)?'🛍 ':''}${esc(i.name||i.cat)} · ${L.indexOf(i)+1}/${L.length}`:(L.length?`None · ${L.length+1}/${L.length+1}`:'No '+ZN[z])};
+ const need=S.items.filter(i=>(SW_ZONE(i)||i.cat==='Accessories')&&!i.cut).length;
  const body=S.profile.photo?`<img src="${S.profile.photo}" class="swbody" alt="" draggable="false">`:`<div class="swbody">${avatarSVG(S.profile.skin)}</div>`;
- const af=adj&&(adj==='t'?t:b);const f=af?swFit(af):null;
+ const af=adj?swCur(adj):null;const f=af?swFit(af):null;const allAcc=S.items.filter(i=>i.cat==='Accessories');
+ const zone=z=>`<div class="swz" data-z="${z}"><button class="swa" data-act="sw_${z}_prev" aria-label="Previous ${ZN[z]}">‹</button><span class="swlab">${pos(z,z==='t'?t:z==='b'?b:s)}</span><button class="swa" data-act="sw_${z}_next" aria-label="Next ${ZN[z]}">›</button></div>`;
  return `<h2>Dress Me</h2>${modeTabs()}
- <div class="swstage" id="swstage">${body}${swLayer(b,'b')}${swLayer(t,'t')}
-  <div class="swz" data-z="t"><button class="swa l" data-act="sw_t_prev" aria-label="Previous top">‹</button><span class="swlab">${pos('t',t,Lt)}</span><button class="swa r" data-act="sw_t_next" aria-label="Next top">›</button></div>
-  <div class="swz" data-z="b"><button class="swa l" data-act="sw_b_prev" aria-label="Previous bottom">‹</button><span class="swlab">${pos('b',b,Lb)}</span><button class="swa r" data-act="sw_b_next" aria-label="Next bottom">›</button></div>
-  ${adj?`<div class="swadjtag">Adjusting ${adj==='t'?'top':'bottom'}: drag / pinch</div>`:''}</div>
- <p class="mut">Swipe the top half for tops, the bottom half for bottoms. Free and instant, nothing leaves your phone.</p>
- <div class="row"><button class="btn sm sec ${adj==='t'?'on':''}" data-act="sw_adj_t" ${t?'':'disabled'}>Adjust top</button><button class="btn sm sec ${adj==='b'?'on':''}" data-act="sw_adj_b" ${b?'':'disabled'}>Adjust bottom</button><button class="btn sm" data-act="sw_save" ${t||b?'':'disabled'}>Save outfit</button><button class="btn sm sec" data-act="sw_wear" ${t||b?'':'disabled'}>Wear today</button></div>
- ${f?`<div class="card" style="margin-top:10px"><label>Left/right</label><input type="range" id="swr_x" min="0" max="100" step="0.5" value="${f.x}"><label>Up/down</label><input type="range" id="swr_y" min="0" max="100" step="0.5" value="${f.y}"><label>Size</label><input type="range" id="swr_s" min="10" max="120" step="0.5" value="${f.s}"><div class="row" style="margin-top:8px"><button class="btn sm" data-act="sw_fit_save">Save fit for this item</button><button class="btn sm sec" data-act="sw_fit_reset">Reset</button><button class="btn sm sec" data-act="sw_adj_done">Done</button></div></div>`:''}
- <div class="card" style="margin-top:10px"><div class="row sp"><b>Cutouts</b><span class="badge">free</span></div><p class="mut" style="margin:6px 0" id="swcutmsg">${need?need+' top/bottom item(s) still have a background.':'All tops and bottoms have cutouts.'} Removal runs on this phone (first run downloads a ~40 MB model once).</p><button class="btn sm sec" data-act="sw_cutall" ${need?'':'disabled'}>Make cutouts</button></div>
+ <div class="swstage" id="swstage">${body}${swLayer(s,'s',3)}${swLayer(b,'b',4)}${swLayer(t,'t',5)}${accs.map((a,k)=>swLayer(a,'a:'+a.id,6+k)).join('')}
+  ${zone('t')}${zone('b')}${zone('s')}
+  ${adj?`<div class="swadjtag">Adjusting ${esc(af?(af.name||af.cat):'')}: drag / pinch</div>`:''}</div>
+ <p class="mut">Swipe the top for tops, the middle for bottoms, the feet for shoes. Shake or tap 🔀 to shuffle. Free, nothing leaves your phone.</p>
+ <div class="row"><button class="btn sm sec ${adj==='t'?'on':''}" data-act="sw_adj" data-k="t" ${t?'':'disabled'}>Adjust top</button><button class="btn sm sec ${adj==='b'?'on':''}" data-act="sw_adj" data-k="b" ${b?'':'disabled'}>Adjust bottom</button><button class="btn sm sec ${adj==='s'?'on':''}" data-act="sw_adj" data-k="s" ${s?'':'disabled'}>Adjust shoes</button>
+ ${accs.map(a=>`<button class="btn sm sec ${adj==='a:'+a.id?'on':''}" data-act="sw_adj" data-k="a:${a.id}">Adjust ${esc(a.name||'accessory')}</button>`).join('')}</div>
+ <div class="row" style="margin-top:6px"><button class="btn sm" data-act="sw_save" ${t||b||s||accs.length?'':'disabled'}>Save outfit</button><button class="btn sm sec" data-act="sw_wear" ${t||b||s?'':'disabled'}>Wear today</button>${'DeviceMotionEvent' in window&&!S.shakeOn?'<button class="btn sm sec" data-act="sw_shake">Enable shake</button>':''}</div>
+ ${f?`<div class="card" style="margin-top:10px"><label>Left/right</label><input type="range" id="swr_x" min="0" max="100" step="0.5" value="${f.x}"><label>Up/down</label><input type="range" id="swr_y" min="0" max="100" step="0.5" value="${f.y}"><label>Size</label><input type="range" id="swr_s" min="5" max="120" step="0.5" value="${f.s}"><div class="row" style="margin-top:8px"><button class="btn sm" data-act="sw_fit_save">Save fit for this item</button><button class="btn sm sec" data-act="sw_fit_reset">Reset</button><button class="btn sm sec" data-act="sw_adj_done">Done</button></div></div>`:''}
+ ${buyBar([t,b,s,...accs].filter(Boolean).map(i=>i.id))}
+ <h3>Accessories <span class="mut" style="font-weight:400">tap to add/remove</span></h3>${allAcc.length?`<div class="strip">${allAcc.map(i=>`<button class="accb ${S.swAcc.includes(i.id)?'sel':''}" data-act="sw_acc" data-k="${i.id}" aria-label="${esc(i.name)}"><img src="${swImg(i)}" alt=""></button>`).join('')}</div>`:'<p class="mut">Add bags, hats or jewelry as Accessories in Closet.</p>'}
+ <div class="card" style="margin-top:10px"><div class="row sp"><b>Cutouts</b><span class="badge">free</span></div><p class="mut" style="margin:6px 0" id="swcutmsg">${need?need+' item(s) still have a background.':'All swipe items have cutouts.'} Removal runs on this phone (first run downloads a ~40 MB model once).</p><button class="btn sm sec" data-act="sw_cutall" ${need?'':'disabled'}>Make cutouts</button></div>
  <p class="mut" style="margin-top:10px">Want a realistic fit? Switch to Board and use “Try on for real” (~4¢).</p>
  ${S.items.length?'':'<div class="card mut">Add clothes in the Closet tab first.</div>'}`}
-function swSetFit(z,f){const g=$('#swg_'+z);if(g){g.style.left=f.x+'%';g.style.top=f.y+'%';g.style.width=f.s+'%'}}
+function swSetFit(k,f){const g=document.getElementById(lid(k));if(g){g.style.left=f.x+'%';g.style.top=f.y+'%';g.style.width=f.s+'%'}}
 let swLive=null;
+const zoneAt=fy=>fy<0.42?'t':fy<0.8?'b':'s';
 function initSwipe(){const st=$('#swstage');if(!st)return;const P=new Map();let g=null;
  st.addEventListener('pointerdown',e=>{if(e.target.closest('.swa'))return;P.set(e.pointerId,{x:e.clientX,y:e.clientY});st.setPointerCapture?.(e.pointerId);
   const r=st.getBoundingClientRect();const adj=S.swAdj;
   if(adj){const i=swCur(adj);if(!i)return;const f=swLive&&swLive.id===i.id?swLive.f:swFit(i);swLive={id:i.id,z:adj,f:{...f}};g={mode:'adj',r,f0:{...swLive.f},p0:[...P.values()].map(p=>({...p})),d0:0}}
-  else g={mode:'sw',z:(e.clientY-r.top)<r.height/2?'t':'b',x0:e.clientX,y0:e.clientY}});
+  else g={mode:'sw',z:zoneAt((e.clientY-r.top)/r.height),x0:e.clientX,y0:e.clientY}});
  st.addEventListener('pointermove',e=>{if(!P.has(e.pointerId)||!g)return;P.set(e.pointerId,{x:e.clientX,y:e.clientY});e.preventDefault();
-  if(g.mode==='adj'){const pts=[...P.values()];if(pts.length>=2){const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);if(!g.d0){g.d0=d;g.f0={...swLive.f}}swLive.f.s=Math.max(10,Math.min(120,g.f0.s*d/g.d0))}
+  if(g.mode==='adj'){const pts=[...P.values()];if(pts.length>=2){const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);if(!g.d0){g.d0=d;g.f0={...swLive.f}}swLive.f.s=Math.max(5,Math.min(120,g.f0.s*d/g.d0))}
    else{const p0=g.p0[0]||pts[0];swLive.f.x=Math.max(0,Math.min(100,g.f0.x+(pts[0].x-p0.x)/g.r.width*100));swLive.f.y=Math.max(0,Math.min(100,g.f0.y+(pts[0].y-p0.y)/g.r.height*100))}
    swSetFit(swLive.z,swLive.f);['x','y','s'].forEach(k=>{const s=$('#swr_'+k);if(s)s.value=swLive.f[k]})}});
  const up=e=>{if(!P.has(e.pointerId))return;P.delete(e.pointerId);if(!g)return;
@@ -448,19 +463,194 @@ function initSwipe(){const st=$('#swstage');if(!st)return;const P=new Map();let 
   else{if(P.size===0)g=null;else{g.p0=[...P.values()].map(p=>({...p}));g.f0={...swLive.f};g.d0=0}}};
  st.addEventListener('pointerup',up);st.addEventListener('pointercancel',up)}
 function swStep(z,d){S.swipe[z]=(S.swipe[z]||0)+d;const n=swList(z).length+1;S.swipe[z]=((S.swipe[z]%n)+n)%n;kvSet('swipe',S.swipe);swLive=null;render()}
-function swIds(){return [swCur('t'),swCur('b')].filter(Boolean).filter((i,k,a)=>!(i.cat==='Dresses'&&k===1)).map(i=>i.id)}
-async function makeCutout(src,onMsg){try{onMsg&&onMsg('Removing background (AI, on-device)…');return await Promise.race([aiCutout(src),new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),90000))])}catch(e){onMsg&&onMsg('AI cutout unavailable, using quick cutout…');return await quickCutout(src)}}
+function swIds(){const t=swCur('t');return [t,t&&t.cat==='Dresses'?null:swCur('b'),swCur('s'),...swAccs()].filter(Boolean).map(i=>i.id)}
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),ms))]);
+async function makeCutout(src,onMsg){try{onMsg&&onMsg('Removing background (AI, on-device)…');return await withTimeout(aiCutout(src),90000)}catch(e){onMsg&&onMsg('AI cutout unavailable, using quick cutout…');return await withTimeout(quickCutout(src),20000)}}
 let swQ=Promise.resolve();
-function queueCutout(id){swQ=swQ.then(async()=>{const i=item(id);if(!i||i.cut||!SW_ZONE(i))return;try{i.cut=await makeCutout(i.orig||i.img);await put('items',i)}catch(e){}}).catch(()=>{});return swQ}
-const _saveItem0=saveItem;saveItem=async function(it){await _saveItem0(it);if(!it.cut&&SW_ZONE(it))queueCutout(it.id)};
-document.addEventListener('click',async e=>{const t=e.target.closest('[data-act]');if(!t)return;const A=t.dataset.act;if(!A.startsWith('sw_')&&!A.startsWith('mode_'))return;e.stopImmediatePropagation();
+const wantsCut=i=>!!(SW_ZONE(i)||i.cat==='Accessories');
+function queueCutout(id){swQ=swQ.then(async()=>{const i=item(id);if(!i||i.cut||!wantsCut(i))return;try{i.cut=await makeCutout(i.orig||i.img);await put('items',i)}catch(e){i.cutFailed=1}}).catch(()=>{});return swQ}
+const _saveItem0=saveItem;saveItem=async function(it){await _saveItem0(it);if(!it.cut&&!it.cutFailed&&wantsCut(it))queueCutout(it.id)};
+
+/* ===== Shuffle ===== */
+function wxNow(){const w=S.wx;if(!w||!w.current)return{tc:18,rain:false,known:false};return{tc:w.current.temperature_2m,rain:(w.current.precipitation>0)||((w.daily?.precipitation_probability_max||[])[0]>=50),known:true}}
+function shufflePick(z){const{tc,rain}=wxNow();const need=warmthNeed(tc),season=seasonNow(),recent=recentWornIds(7);
+ let L=swList(z).filter(i=>!isShop(i)&&i.laundry!=='dirty'&&i.laundry!=='cleaners'&&!i.outdated&&(z!=='t'||i.cat!=='Dresses'||true));
+ const fresh=L.filter(i=>!recent.has(i.id));if(fresh.length)L=fresh;if(!L.length)return null;
+ const sc=i=>-Math.abs((i.warmth||3)-need)*2+(!i.seasons?.length||i.seasons.includes(season)?1.5:0)+(rain&&i.tags?.some(t=>/rain|waterproof/i.test(t))?2:0)+(z==='t'&&i.cat==='Outerwear'&&need<4?-3:0)+Math.random()*2;
+ return L.map(i=>[sc(i),i]).sort((a,b)=>b[0]-a[0])[0][1]}
+function doShuffle(){const res={};for(const z of['t','b','s']){const p=shufflePick(z);const L=swList(z);res[z]=p;S.swipe[z]=p?L.indexOf(p):L.length}
+ const t=res.t;if(t&&t.cat==='Dresses')S.swipe.b=swList('b').length;
+ kvSet('swipe',S.swipe);swLive=null;S.swAdj='';const w=wxNow();if(S.tab!=='dress'||S.dressMode!=='swipe'){S.tab='dress';S.dressMode='swipe'}render();toast('Shuffled'+(w.known?` for ${Math.round(S.settings.units==='F'?w.tc*9/5+32:w.tc)}°${w.rain?' + rain':''}`:' (no weather set)'))}
+let lastShake=0;function onMotion(e){const a=e.accelerationIncludingGravity||e.acceleration;if(!a)return;const m=Math.hypot(a.x||0,a.y||0,a.z||0);if(m>24&&Date.now()-lastShake>1500&&S.tab==='dress'&&S.dressMode==='swipe'){lastShake=Date.now();doShuffle()}}
+async function enableShake(){try{if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){const r=await DeviceMotionEvent.requestPermission();if(r!=='granted')return toast('Motion permission denied')}addEventListener('devicemotion',onMotion);S.shakeOn=true;kvSet('shakeOn',true);toast('Shake to shuffle is on');render()}catch(e){toast('Shake not available')}}
+
+/* ===== Swipe events ===== */
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-act]');if(!t)return;const A=t.dataset.act,K=t.dataset.k;if(!A.startsWith('sw_')&&!A.startsWith('mode_'))return;e.stopImmediatePropagation();
  if(A==='mode_board'||A==='mode_swipe'){S.dressMode=A.slice(5);S.swAdj='';swLive=null;await kvSet('dressMode',S.dressMode);return render()}
- const m=A.match(/^sw_([tb])_(prev|next)$/);if(m)return swStep(m[1],m[2]==='next'?1:-1);
- if(A==='sw_adj_t'||A==='sw_adj_b'){const z=A.slice(-1);S.swAdj=S.swAdj===z?'':z;swLive=null;return render()}
+ const m=A.match(/^sw_([tbs])_(prev|next)$/);if(m)return swStep(m[1],m[2]==='next'?1:-1);
+ if(A==='sw_shuffle')return doShuffle();
+ if(A==='sw_shake')return enableShake();
+ if(A==='sw_acc'){S.swAcc=S.swAcc||[];const k=S.swAcc.indexOf(K);k>=0?S.swAcc.splice(k,1):S.swAcc.push(K);if(k>=0&&S.swAdj==='a:'+K)S.swAdj='';await kvSet('swAcc',S.swAcc);return render()}
+ if(A==='sw_adj'){S.swAdj=S.swAdj===K?'':K;swLive=null;return render()}
  if(A==='sw_adj_done'){S.swAdj='';swLive=null;return render()}
  if(A==='sw_fit_save'||A==='sw_fit_reset'){const i=swCur(S.swAdj);if(!i)return;if(A==='sw_fit_reset'){delete i.fit;swLive=null}else{i.fit={...(swLive&&swLive.id===i.id?swLive.f:swFit(i))}}await put('items',i);toast(A==='sw_fit_reset'?'Fit reset':'Fit saved for '+(i.name||i.cat));return render()}
  if(A==='sw_save'){const ids=swIds();if(!ids.length)return;const name=prompt('Name this outfit','My outfit '+(S.outfits.length+1));if(name===null)return;const o={id:uid(),name:name||'Outfit',items:ids,created:Date.now()};S.outfits.unshift(o);await put('outfits',o);toast('Outfit saved');return render()}
- if(A==='sw_wear'){const ids=swIds();if(ids.length)await logWear(ids);return render()}
- if(A==='sw_cutall'){const L=S.items.filter(i=>SW_ZONE(i)&&!i.cut);t.disabled=true;const msg=$('#swcutmsg');let k=0;for(const i of L){k++;const say=s=>{if(msg)msg.textContent=`${k}/${L.length}: ${s}`};try{i.cut=await makeCutout(i.orig||i.img,say);await put('items',i)}catch(err){}}toast('Cutouts done');return render()}
+ if(A==='sw_wear'){const ids=swIds().filter(id=>!isShop(item(id)));if(ids.length)await logWear(ids);return render()}
+ if(A==='sw_cutall'){const L=S.items.filter(i=>wantsCut(i)&&!i.cut);t.disabled=true;const msg=$('#swcutmsg');let k=0;for(const i of L){k++;const say=s=>{if(msg)msg.textContent=`${k}/${L.length}: ${s}`};try{i.cut=await makeCutout(i.orig||i.img,say);await put('items',i)}catch(err){}}toast('Cutouts done');return render()}
 },true);
 document.addEventListener('input',e=>{const m=e.target.id&&e.target.id.match(/^swr_([xys])$/);if(!m)return;const i=swCur(S.swAdj);if(!i)return;if(!swLive||swLive.id!==i.id)swLive={id:i.id,z:S.swAdj,f:swFit(i)};swLive.f[m[1]]=+e.target.value;swSetFit(S.swAdj,swLive.f)});
+
+/* ===== Fast camera capture + auto-sort ===== */
+const QCATS=['Tops','Bottoms','Shoes','Accessories','Outerwear','Dresses'];
+let tray=[];let useMN=false,_mn=null;
+async function loadMN(){if(_mn)return _mn;const load=src=>new Promise((r,j)=>{const s=document.createElement('script');s.src=src;s.onload=r;s.onerror=j;document.head.appendChild(s)});
+ await load('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');await load('https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js');_mn=await window.mobilenet.load({version:2,alpha:0.5});return _mn}
+const MN_MAP=[[/jersey|sweatshirt|cardigan|t-shirt|tee|blouse|polo|vest|bulletproof/,'Tops'],[/jean|denim|miniskirt|sarong|trouser|pajama/,'Bottoms'],[/shoe|sandal|loafer|clog|boot|sneaker|slipper|sock/,'Shoes'],[/bag|purse|wallet|backpack|sunglass|necklace|watch|hat|sombrero|cap|bonnet|bow tie|tie|bracelet|ring|wig|mask/,'Accessories'],[/coat|jacket|poncho|parka|cloak|kimono/,'Outerwear'],[/gown|overskirt|dress|apron/,'Dresses']];
+function heurCat(c){const x=c.getContext('2d'),W=c.width,H=c.height,d=x.getImageData(0,0,W,H).data;let n=0,sy=0;for(let y=0;y<H;y++)for(let X=0;X<W;X++)if(d[(y*W+X)*4+3]>10){n++;sy+=y}
+ const fill=n/(W*H),ar=H/W;if(ar>1.45)return'Bottoms';if(ar<0.72)return'Shoes';if(fill<0.35&&ar<1.1)return'Accessories';return'Tops'}
+async function guessCat(src){try{const cut=await withTimeout(quickCutout(src),15000);const im=await loadImg(cut);const c=scale(im,120,'image/png');let g=heurCat(c);
+  if(useMN){try{const mn=await withTimeout(loadMN(),30000);const im2=await loadImg(src);const p=await mn.classify(im2,3);for(const r of p){const hit=MN_MAP.find(([re])=>re.test(r.className.toLowerCase()));if(hit&&r.probability>0.12){g=hit[1];break}}}catch(e){useMN=false;toast('Smart sort unavailable, using quick guess')}}
+  return{cat:g,quick:cut}}catch(e){return{cat:'Tops',quick:src}}}
+function trayView(){return `<div class="row sp"><h2 style="margin:0">Snap several</h2><button class="btn sm sec" data-act="close">✕</button></div>
+ <p class="mut">Tap Snap for each piece, one after another. We guess the category; tap to fix it.</p>
+ <label class="btn full" style="text-align:center">📷 Snap ${tray.length?'next':'first'} piece<input type="file" accept="image/*" capture="environment" id="x_snap" hidden></label>
+ <label class="btn sec full" style="text-align:center;margin-top:6px">🖼 Pick several from photos<input type="file" accept="image/*" multiple id="x_snapgal" hidden></label>
+ <div class="tog"><span>Smarter sort (downloads ~5 MB AI model once)</span><input type="checkbox" id="x_mn" style="width:auto" ${useMN?'checked':''}></div>
+ <div id="x_tray">${tray.map((t,k)=>`<div class="card trayit"><img src="${t.quick||t.src}" alt=""><div style="flex:1"><div class="chips">${QCATS.map(c=>`<button class="chip ${t.cat===c?'on':''}" data-act="x_tcat" data-k="${k}|${c}">${c}</button>`).join('')}</div>${t.busy?'<span class="mut">Sorting…</span>':''}</div><button class="btn sm sec" data-act="x_tdel" data-k="${k}">✕</button></div>`).join('')}</div>
+ ${tray.length?`<button class="btn full" style="margin-top:10px" data-act="x_tsave">Save ${tray.length} item${tray.length>1?'s':''} + make cutouts</button>`:''}`}
+function openTray(){openSheet(trayView())}
+function refreshTray(){if($('#x_tray'))openSheet(trayView())}
+async function addToTray(f){const im=await fileToImg(f);const src=scale(im).toDataURL('image/jpeg',.85);const t={src,cat:'Tops',busy:true};tray.push(t);refreshTray();const g=await guessCat(src);Object.assign(t,g,{busy:false});refreshTray()}
+
+/* ===== Store items + Deals ===== */
+async function imgUrlToData(url){try{const r=await withTimeout(fetch(url,{mode:'cors'}),12000);if(!r.ok)throw 0;const b=await r.blob();if(!/^image\//.test(b.type))throw 0;const im=await fileToImg(b);return scale(im).toDataURL('image/jpeg',.85)}catch(e){return null}}
+function storeFlow(){openSheet(`<div class="row sp"><h2 style="margin:0">Add from store</h2><button class="btn sm sec" data-act="close">✕</button></div>
+ <label>Product page link</label><input id="x_purl" type="url" placeholder="https://store.com/product…">
+ <label>Image link (right-click / long-press the product photo → copy image address)</label><input id="x_iurl" type="url" placeholder="https://…jpg">
+ <label class="btn sec full" style="text-align:center;margin-top:8px">…or upload a screenshot<input type="file" accept="image/*" id="x_shot" hidden></label><img id="x_sprev" class="prev hidden" style="margin-top:8px">
+ <label>Name</label><input id="x_sname" placeholder="e.g. Cropped denim jacket"><div class="row" style="flex-wrap:nowrap"><div style="flex:1"><label>Price</label><input id="x_sprice" inputmode="decimal" placeholder="49.99"></div><div style="flex:1"><label>Category</label><select id="x_scat">${CATS.map(c=>`<option>${c}</option>`).join('')}</select></div></div>
+ <label>Buy link (affiliate-ready; leave blank to use product link)</label><input id="x_aff" type="url" placeholder="https://…?tag=yourid">
+ <button class="btn full" style="margin-top:12px" data-act="x_ssave">Save to try on</button><p class="mut" id="x_smsg"></p>`)}
+let shotData=null;
+function dealCard(d){const it=d.itemId&&item(d.itemId);const img=it?swImg(it):safeSrc(d.img);return `<div class="card"><div class="row sp"><span class="badge sp">Deal${d.pct?' · '+esc(d.pct)+'% off':''}</span><span class="mut">${esc(d.brand||'')}</span></div>
+ <div class="row" style="margin-top:8px;flex-wrap:nowrap"><div style="position:relative;width:90px;height:150px;flex:none">${S.profile.photo?`<img src="${S.profile.photo}" style="height:150px;width:90px;object-fit:contain">`:avatarSVG(S.profile.skin).replace('class="av"','style="height:150px"')}${img?`<img src="${img}" style="position:absolute;left:18px;top:30px;width:54px;filter:drop-shadow(0 2px 3px #0004)">`:''}</div>
+ <div style="flex:1"><b>${esc(d.title||'Sale')}</b><p class="mut">${d.until?'Ends '+esc(d.until)+' · ':''}Added by you</p><div class="row">${safeUrl(d.url)?`<a class="btn sm" href="${esc(safeUrl(d.url))}" target="_blank" rel="noopener sponsored">Shop</a>`:''}${it?`<button class="btn sm sec" data-act="x_dtry" data-k="${it.id}">Try on</button>`:''}<button class="btn sm sec" data-act="x_ddel" data-k="${d.id}">✕</button></div></div></div></div>`}
+function dealForm(){const shop=S.items.filter(isShop);openSheet(`<div class="row sp"><h2 style="margin:0">Add a deal</h2><button class="btn sm sec" data-act="close">✕</button></div>
+ <label>Brand / store</label><input id="x_dbrand"><label>Headline</label><input id="x_dtitle" placeholder="30% off rain coats"><div class="row" style="flex-wrap:nowrap"><div style="flex:1"><label>% off</label><input id="x_dpct" inputmode="numeric"></div><div style="flex:1"><label>Ends</label><input id="x_duntil" type="date"></div></div>
+ <label>Link</label><input id="x_durl" type="url"><label>Show this store item on my avatar</label><select id="x_ditem"><option value="">(none)</option>${shop.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('')}</select>
+ <button class="btn full" style="margin-top:12px" data-act="x_dsave">Save deal</button>`)}
+
+/* ===== Sharing (export/import, no backend) ===== */
+async function gz(str){if(!window.CompressionStream)return null;const s=new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'));return new Uint8Array(await new Response(s).arrayBuffer())}
+async function gunz(buf){const s=new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));return await new Response(s).text()}
+const b64u=u8=>{let s='';for(let i=0;i<u8.length;i+=0x8000)s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
+const ub64=s=>{const b=atob(s.replace(/-/g,'+').replace(/_/g,'/'));const u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
+async function thumbOf(src,max=180){try{const im=await withTimeout(loadImg(src),5000);const png=/^data:image\/png/.test(src);const c=scale(im,max,png?'image/png':'image/jpeg');return png?c.toDataURL('image/png'):c.toDataURL('image/jpeg',.7)}catch(e){return safeSrc(src)&&!src.startsWith('data:')?src:''}}
+async function packItems(ids,withImg){const out=[];for(const id of ids){const i=item(id);if(!i)continue;out.push({id:i.id,name:i.name,cat:i.cat,color:i.color,tags:(i.tags||[]).slice(0,8),price:i.price||'',buyUrl:safeUrl(i.buyUrl)||'',img:withImg?await thumbOf(swImg(i)):''})}return out}
+const owner=()=>S.profile.name||'My';
+async function buildShare(kind,extra={}){const p={app:'britts-drip-share',v:1,kind,owner:owner(),created:Date.now(),...extra};return p}
+async function shareFile(payload,title){const json=JSON.stringify(payload);const z=await gz(json);const name=(title||'britts-drip').replace(/[^\w-]+/g,'-').toLowerCase()+(z?'.bdrip':'.json');
+ const file=new File([z||json],name,{type:z?'application/octet-stream':'application/json'});
+ try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title,text:title+' (open in Britts Drip → Me → Import shared file)'});return}}catch(e){if(e.name==='AbortError')return}
+ const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;document.body.appendChild(a);a.click();a.remove();closeSheet();toast('Saved '+name+'. Send it to share.')}
+async function shareLink(payload,title){const z=await gz(JSON.stringify(payload));const url=location.origin+location.pathname+'#share='+(z?'z.'+b64u(z):'j.'+b64u(new TextEncoder().encode(JSON.stringify(payload))));
+ if(url.length>60000)return toast('Too big for a link, use Share file');
+ try{if(navigator.share){await navigator.share({title,url});return}}catch(e){if(e.name==='AbortError')return}
+ try{await navigator.clipboard.writeText(url);toast('Link copied')}catch(e){prompt('Copy this link',url)}}
+function cleanShare(p){if(!p||p.app!=='britts-drip-share'||!Array.isArray(p.items||[]))throw new Error('Not a Britts Drip share');const it=(p.items||[]).slice(0,500).map(i=>({id:String(i.id||uid()).slice(0,40),name:String(i.name||'').slice(0,80),cat:CATS.includes(i.cat)?i.cat:'Accessories',color:String(i.color||'').slice(0,20),tags:(Array.isArray(i.tags)?i.tags:[]).map(t=>String(t).slice(0,30)).slice(0,8),price:String(i.price||'').slice(0,12),buyUrl:safeUrl(i.buyUrl)||'',img:safeSrc(i.img)||'',url:safeUrl(i.url)||'',size:String(i.size||'').slice(0,20),notes:String(i.notes||'').slice(0,200)}));
+ return{id:uid(),kind:['closet','outfit','wishlist','suggestion'].includes(p.kind)?p.kind:'closet',owner:String(p.owner||'Someone').slice(0,40),to:String(p.to||'').slice(0,40),name:String(p.name||'').slice(0,80),items:it,outfitIds:(Array.isArray(p.outfitIds)?p.outfitIds:[]).map(String).slice(0,20),received:Date.now()}}
+async function importShare(p){const s=cleanShare(p);S.shared=[s,...(S.shared||[])].slice(0,30);await kvSet('shared',S.shared);toast('Received '+s.owner+"'s "+s.kind);openShared(s.id)}
+async function importBytes(u8){let txt;if(u8[0]===0x1f&&u8[1]===0x8b)txt=await gunz(u8);else txt=new TextDecoder().decode(u8);return importShare(JSON.parse(txt))}
+const poss=n=>/s$/i.test(n)?n+"'":n+"'s";
+function sharedList(){const L=S.shared||[];openSheet(`<div class="row sp"><h2 style="margin:0">Shared with me</h2><button class="btn sm sec" data-act="close">✕</button></div>
+ ${L.length?L.map(s=>`<div class="card"><div class="row sp"><b>${esc(s.kind==='suggestion'?'Outfit idea from '+s.owner:poss(s.owner)+' '+(s.kind==='wishlist'?'gift ideas':s.kind))}</b><span><button class="btn sm sec" data-act="x_open" data-k="${s.id}">Open</button> <button class="btn sm sec" data-act="x_sdel" data-k="${s.id}">✕</button></span></div><p class="mut">${s.items.length} item(s) · ${new Date(s.received).toLocaleDateString()}</p></div>`).join(''):'<p class="mut">Nothing yet. When someone sends you a Britts Drip link or file, open it here.</p>'}
+ <label class="btn sec full" style="text-align:center;margin-top:8px">Import shared file<input type="file" id="x_imp" accept=".bdrip,.json,application/json,application/octet-stream" hidden></label>`)}
+let xSel=new Set();
+function miniStage(items){return `<div class="ministage">${avatarSVG(S.profile.skin)}${items.map(i=>{const f=i.cat==='Accessories'?accDef(i):(SW_DEF[i.cat]||SW_DEF[SW_ZONE(i)]||{x:50,y:40,s:30});return i.img?`<img src="${i.img}" style="left:${f.x}%;top:${f.y}%;width:${f.s}%">`:''}).join('')}</div>`}
+function openShared(id){const s=(S.shared||[]).find(x=>x.id===id);if(!s)return;S.xOpen=id;const sel=s.items.filter(i=>xSel.has(i.id));
+ const sw=i=>i.img?`<img src="${i.img}" alt="">`:`<div class="sw" style="background:${esc(COLORS[i.color]||'#bbb')}"></div>`;
+ if(s.kind==='wishlist')return openSheet(`<div class="row sp"><h2 style="margin:0">${esc(poss(s.owner))} gift ideas</h2><button class="btn sm sec" data-act="close">✕</button></div><span class="badge">read-only</span>
+  ${s.items.map(i=>`<div class="card row" style="flex-wrap:nowrap">${i.img?`<img src="${i.img}" style="width:56px;height:56px;object-fit:contain">`:''}<div style="flex:1"><b>${esc(i.name)}</b><div class="mut">${[i.size&&'Size '+i.size,i.price&&'$'+i.price,i.notes].filter(Boolean).map(esc).join(' · ')}</div></div>${i.url?`<a class="btn sm" href="${esc(i.url)}" target="_blank" rel="noopener">View</a>`:''}</div>`).join('')}<button class="btn sec full" data-act="x_shared">Back</button>`);
+ if(s.kind==='suggestion'){const mine=s.outfitIds.filter(item);return openSheet(`<div class="row sp"><h2 style="margin:0">Outfit idea from ${esc(s.owner)}</h2><button class="btn sm sec" data-act="close">✕</button></div>${s.name?`<p><b>${esc(s.name)}</b></p>`:''}${miniStage(s.items)}
+  <div class="strip">${s.items.map(i=>`<div class="thumb ro">${sw(i)}<span>${esc(i.name)}</span></div>`).join('')}</div>
+  ${mine.length?`<button class="btn full" data-act="x_sugload" data-k="${s.id}">Load on my Board</button> <button class="btn sec full" style="margin-top:6px" data-act="x_sugsave" data-k="${s.id}">Save as outfit</button>`:'<p class="mut">These pieces aren’t in this closet.</p>'}<button class="btn sec full" style="margin-top:6px" data-act="x_shared">Back</button>`)}
+ openSheet(`<div class="row sp"><h2 style="margin:0">${esc(poss(s.owner))} ${s.kind==='outfit'?'outfit':'closet'}</h2><button class="btn sm sec" data-act="close">✕</button></div><span class="badge">read-only</span>${s.name?` <b>${esc(s.name)}</b>`:''}
+ <p class="mut">Tap pieces to build an outfit idea for ${esc(s.owner)}, then send it back.</p>${miniStage(sel)}
+ <div class="grid">${s.items.map(i=>`<button class="thumb ro ${xSel.has(i.id)?'sel':''}" data-act="x_pick" data-k="${esc(i.id)}">${sw(i)}<span>${esc(i.name||i.cat)}</span></button>`).join('')}</div>
+ <label>Note / outfit name</label><input id="x_sugname" placeholder="Date night?">
+ <button class="btn full" style="margin-top:8px" data-act="x_sugsend" ${sel.length?'':'disabled'}>Send outfit idea back (${sel.length})</button><button class="btn sec full" style="margin-top:6px" data-act="x_shared">Back</button>`)}
+function shareMenu(kind,ref){openSheet(`<div class="row sp"><h2 style="margin:0">Share ${kind==='wishlist'?'gift ideas':kind}</h2><button class="btn sm sec" data-act="close">✕</button></div>
+ <p class="mut">No account needed. A file includes small photos; a link is lighter (colors only) and best for outfits and wishlists.</p>
+ <button class="btn full" data-act="x_doshare" data-k="file|${kind}|${ref||''}">Share as file (with photos)</button><button class="btn sec full" style="margin-top:6px" data-act="x_doshare" data-k="link|${kind}|${ref||''}">Share as link</button>`)}
+async function payloadFor(kind,ref,withImg){if(kind==='closet')return buildShare('closet',{items:await packItems(S.items.filter(i=>!isShop(i)).map(i=>i.id),withImg)});
+ if(kind==='outfit'){const o=S.outfits.find(x=>x.id===ref);return buildShare('outfit',{name:o?.name||'',items:await packItems(o?o.items:[],withImg)})}
+ if(kind==='wishlist')return buildShare('wishlist',{items:await Promise.all((S.wish||[]).map(async w=>({...w,img:withImg&&w.img?await thumbOf(w.img,160):''})))})}
+
+/* ===== Wishlist ===== */
+function wishForm(){openSheet(`<div class="row sp"><h2 style="margin:0">Add gift idea</h2><button class="btn sm sec" data-act="close">✕</button></div><label>What</label><input id="x_wname"><label>Link</label><input id="x_wurl" type="url"><label>Image link (optional)</label><input id="x_wimg" type="url"><div class="row" style="flex-wrap:nowrap"><div style="flex:1"><label>Size</label><input id="x_wsize"></div><div style="flex:1"><label>Price</label><input id="x_wprice" inputmode="decimal"></div></div><label>Notes</label><input id="x_wnotes"><button class="btn full" style="margin-top:12px" data-act="x_wsave">Add</button>`)}
+
+/* ===== Install prompt ===== */
+let bip=null;const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const isIOS=()=>/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const isIOSSafari=()=>isIOS()&&!/CriOS|FxiOS|EdgiOS|GSA\//.test(navigator.userAgent);
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();bip=e;showInstall('android')});
+async function showInstall(kind){if(standalone()||$('#x_inst'))return;const seen=await kvGet('installTip',false).catch(()=>false);if(seen)return;
+ const d=document.createElement('div');d.id='x_inst';d.className='instbar';
+ d.innerHTML=kind==='ios'?`<div><b>Add Britts Drip to your Home Screen</b><br>Tap <span class="ishare">Share ⬆︎</span> at the bottom of Safari, then <b>Add to Home Screen</b>.</div><button class="btn sm sec" data-act="x_instx">Got it</button>`:`<div><b>Install Britts Drip</b><br>Opens full-screen like an app.</div><button class="btn sm" data-act="x_instgo">Install</button><button class="btn sm sec" data-act="x_instx">✕</button>`;document.body.appendChild(d)}
+
+/* ===== Wrapped views ===== */
+const _vCloset0=vCloset;vCloset=function(){const n=(S.shared||[]).length;return `<div class="row xrow"><button class="btn sm sec" data-act="x_tray">📷 Snap several</button><button class="btn sm sec" data-act="x_store">🔗 From store</button><button class="btn sm sec" data-act="x_sharecl">Share closet</button><button class="btn sm sec" data-act="x_shared">Shared with me${n?' ('+n+')':''}</button></div>`+_vCloset0()};
+const _vAlerts0=vAlerts;vAlerts=function(){const D=S.deals||[];return `<h2>Deals</h2><p class="mut">Your own deal list (no live sale feed yet). Link a store item to see it on your avatar.</p>${D.map(dealCard).join('')}<button class="btn sec full" data-act="x_dadd">+ Add a deal</button><div style="height:14px"></div>`+_vAlerts0()};
+const _vMe0=vMe;vMe=function(){const W=S.wish||[];return _vMe0()+`<h3>Wishlist / gift ideas</h3>${W.map(w=>`<div class="card row" style="flex-wrap:nowrap">${safeSrc(w.img)?`<img src="${esc(safeSrc(w.img))}" style="width:48px;height:48px;object-fit:contain">`:''}<div style="flex:1"><b>${esc(w.name)}</b><div class="mut">${[w.size&&'Size '+w.size,w.price&&'$'+w.price].filter(Boolean).map(esc).join(' · ')}</div></div><button class="btn sm sec" data-act="x_wdel" data-k="${w.id}">✕</button></div>`).join('')||'<p class="mut">Add things you’d love so people know what to get you.</p>'}
+ <div class="row"><button class="btn sm sec" data-act="x_wadd">+ Add idea</button><button class="btn sm sec" data-act="x_sharewish" ${W.length?'':'disabled'}>Share list</button><button class="btn sm sec" data-act="x_shared">Shared with me</button></div>
+ ${standalone()?'':`<div class="card" style="margin-top:10px"><b>Install</b><p class="mut">${isIOS()?'In Safari tap Share ⬆︎ → Add to Home Screen.':'Use your browser menu → Install app / Add to Home screen.'}</p>${bip?'<button class="btn sm" data-act="x_instgo">Install now</button>':''}</div>`}`};
+const _vDress0=vDress;vDress=function(){let h=_vDress0();if(S.dressMode!=='swipe')h=h.replace(/(<h3>Saved outfits<\/h3>)/,'$1');return h.replace(/data-plano="([^"]+)">Plan<\/button>/g,'data-plano="$1">Plan</button> <button class="btn sm sec" data-act="x_shareo" data-k="$1">Share</button>')};
+
+/* ===== New events ===== */
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-act]');if(!t)return;const A=t.dataset.act,K=t.dataset.k||'';if(!A.startsWith('x_'))return;e.stopImmediatePropagation();const v=id=>($('#'+id)?.value||'').trim();
+ if(A==='x_tray'){tray=[];return openTray()}
+ if(A==='x_tcat'){const[k,c]=K.split('|');if(tray[k])tray[k].cat=c;return refreshTray()}
+ if(A==='x_tdel'){tray.splice(+K,1);return refreshTray()}
+ if(A==='x_tsave'){const L=tray.filter(x=>!x.busy);for(const x of L){const col=await dominantColor(x.quick||x.src).catch(()=>'Gray');const it=newItem({img:x.quick||x.src,orig:x.src,cat:x.cat,color:col});it.name=col+' '+x.cat.replace(/s$/,'').toLowerCase();await saveItem(it)}tray=[];closeSheet();S.tab='closet';render();return toast(`Added ${L.length}. Cutouts running in the background.`)}
+ if(A==='x_store')return storeFlow();
+ if(A==='x_ssave'){const msg=$('#x_smsg'),purl=v('x_purl'),iurl=v('x_iurl'),name=v('x_sname');if(!shotData&&!iurl)return toast('Add an image link or screenshot');msg.textContent='Saving…';
+  let img=shotData;if(!img){img=await imgUrlToData(iurl);if(!img){if(!safeSrc(iurl))return toast('Image link must start with https://');img=iurl;msg.textContent='Store blocks copying its photo, so it’s linked (no cutout). Upload a screenshot for a cutout.'}}
+  const it=newItem({img,orig:img,cat:$('#x_scat').value,name:name||'Store item',price:v('x_sprice'),tags:['Shop'],buyUrl:safeUrl(v('x_aff'))||safeUrl(purl)||'',productUrl:safeUrl(purl)||'',occasions:[]});if(!img.startsWith('data:'))it.cutFailed=1;
+  it.color=img.startsWith('data:')?await dominantColor(img).catch(()=>'Gray'):'Gray';await saveItem(it);shotData=null;closeSheet();toast('Store item saved. Try it in Swipe or Board.');S.tab='dress';return render()}
+ if(A==='x_dadd')return dealForm();
+ if(A==='x_dsave'){const d={id:uid(),brand:v('x_dbrand'),title:v('x_dtitle')||'Sale',pct:v('x_dpct').replace(/\D/g,'').slice(0,3),until:v('x_duntil'),url:safeUrl(v('x_durl')),itemId:$('#x_ditem').value};S.deals=[d,...(S.deals||[])];await kvSet('deals',S.deals);closeSheet();return render()}
+ if(A==='x_ddel'){S.deals=(S.deals||[]).filter(d=>d.id!==K);await kvSet('deals',S.deals);return render()}
+ if(A==='x_dtry'){const i=item(K);const z=SW_ZONE(i);S.tab='dress';S.dressMode='swipe';if(z)S.swipe[z]=swList(z).indexOf(i);else if(i.cat==='Accessories'&&!(S.swAcc||[]).includes(K))S.swAcc=[...(S.swAcc||[]),K];kvSet('swipe',S.swipe);kvSet('swAcc',S.swAcc||[]);return render()}
+ if(A==='x_sharecl')return shareMenu('closet');
+ if(A==='x_shareo')return shareMenu('outfit',K);
+ if(A==='x_sharewish')return shareMenu('wishlist');
+ if(A==='x_doshare'){const[how,kind,ref]=K.split('|');t.disabled=true;try{const p=await payloadFor(kind,ref,how==='file');const title=poss(owner())+' '+(kind==='wishlist'?'gift ideas':kind);await (how==='file'?shareFile(p,title):shareLink(p,title))}catch(err){toast('Share failed: '+(err.message||err))}t.disabled=false;return}
+ if(A==='x_shared'){xSel=new Set();return sharedList()}
+ if(A==='x_open'){xSel=new Set();return openShared(K)}
+ if(A==='x_sdel'){S.shared=(S.shared||[]).filter(s=>s.id!==K);await kvSet('shared',S.shared);return sharedList()}
+ if(A==='x_pick'){xSel.has(K)?xSel.delete(K):xSel.add(K);const n=v('x_sugname');openShared(S.xOpen);if($('#x_sugname'))$('#x_sugname').value=n;return}
+ if(A==='x_sugsend'){const s=(S.shared||[]).find(x=>x.id===S.xOpen);if(!s)return;const items=s.items.filter(i=>xSel.has(i.id));const p=await buildShare('suggestion',{to:s.owner,name:v('x_sugname'),items,outfitIds:items.map(i=>i.id)});return shareMenuSend(p,'Outfit idea for '+s.owner)}
+ if(A==='x_sugload'||A==='x_sugsave'){const s=(S.shared||[]).find(x=>x.id===K);const ids=s.outfitIds.filter(item);if(A==='x_sugload'){loadToBoard(ids);S.dressMode='board';kvSet('dressMode','board');closeSheet();S.tab='dress';return render()}const o={id:uid(),name:s.name||'Idea from '+s.owner,items:ids,created:Date.now()};S.outfits.unshift(o);await put('outfits',o);closeSheet();return toast('Outfit saved')}
+ if(A==='x_wadd')return wishForm();
+ if(A==='x_wsave'){const w={id:uid(),name:v('x_wname')||'Gift idea',url:safeUrl(v('x_wurl')),img:safeSrc(v('x_wimg')),size:v('x_wsize'),price:v('x_wprice'),notes:v('x_wnotes')};S.wish=[...(S.wish||[]),w];await kvSet('wish',S.wish);closeSheet();return render()}
+ if(A==='x_wdel'){S.wish=(S.wish||[]).filter(w=>w.id!==K);await kvSet('wish',S.wish);return render()}
+ if(A==='x_instx'){$('#x_inst')?.remove();return kvSet('installTip',true)}
+ if(A==='x_instgo'){if(!bip)return toast('Use the browser menu → Install app');bip.prompt();const r=await bip.userChoice.catch(()=>({}));bip=null;$('#x_inst')?.remove();kvSet('installTip',true);return toast(r.outcome==='accepted'?'Installed':'Maybe later')}
+},true);
+async function shareMenuSend(p,title){openSheet(`<div class="row sp"><h2 style="margin:0">${esc(title)}</h2><button class="btn sm sec" data-act="close">✕</button></div><button class="btn full" id="x_sf">Share as file (with photos)</button><button class="btn sec full" style="margin-top:6px" id="x_sl">Share as link</button>`);
+ $('#x_sf').onclick=()=>shareFile(p,title);$('#x_sl').onclick=()=>shareLink({...p,items:p.items.map(i=>({...i,img:''}))},title)}
+document.addEventListener('change',async e=>{const id=e.target.id;if(!id||!id.startsWith('x_'))return;
+ if(id==='x_mn'){useMN=e.target.checked;return}
+ if(id==='x_snap'||id==='x_snapgal'){for(const f of [...e.target.files])addToTray(f).catch(()=>toast('Could not read photo'));e.target.value='';return}
+ if(id==='x_shot'){const f=e.target.files[0];if(!f)return;const im=await fileToImg(f);shotData=scale(im).toDataURL('image/jpeg',.85);const p=$('#x_sprev');p.src=shotData;p.classList.remove('hidden');return}
+ if(id==='x_imp'){const f=e.target.files[0];if(!f)return;try{await importBytes(new Uint8Array(await f.arrayBuffer()))}catch(err){toast('Not a Britts Drip share file')}return}
+},true);
+
+/* ===== Late init ===== */
+async function checkHash(){const m=location.hash.match(/^#share=([zj])\.(.+)$/);if(!m)return false;history.replaceState(null,'',location.pathname);try{const u=ub64(m[2]);await importShare(JSON.parse(m[1]==='z'?await gunz(u):new TextDecoder().decode(u)))}catch(e){toast('Could not open shared link')}return true}
+async function xInit(){for(let k=0;k<100&&!db;k++)await new Promise(r=>setTimeout(r,50));if(!db)return;
+ S.deals=await kvGet('deals',[]);S.wish=await kvGet('wish',[]);S.shared=await kvGet('shared',[]);S.swAcc=await kvGet('swAcc',[]);S.swipe=Object.assign({t:0,b:0,s:0},S.swipe||{});
+ if(await kvGet('shakeOn',false)&&!(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function')){addEventListener('devicemotion',onMotion);S.shakeOn=true}
+ if(!await checkHash())render();addEventListener('hashchange',checkHash);
+ if(isIOSSafari()&&!standalone())setTimeout(()=>showInstall('ios'),2500)}
+xInit();

@@ -75,3 +75,8 @@ header{padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16
 .swstage.posing .swg{transition:left .6s cubic-bezier(.45,.05,.25,1),top .6s cubic-bezier(.45,.05,.25,1),width .6s cubic-bezier(.45,.05,.25,1)}
 .board.posing img.pc{transition:transform .6s cubic-bezier(.45,.05,.25,1)}
 .posechips{margin:-2px 0 10px}
+.alignbox,.cambox{position:relative;width:min(100%,300px,calc(62dvh * 100 / 220));aspect-ratio:100/220;margin:8px auto;border-radius:14px;overflow:hidden;background:repeating-conic-gradient(#eee 0 25%,#fff 0 50%) 0 0/16px 16px;touch-action:none;user-select:none;-webkit-user-select:none}
+.cambox{background:#000}.cambox video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ghost{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.45;z-index:2}
+.alignbox img{position:absolute;max-width:none;pointer-events:none;z-index:1}
+.alignbox .ghost{opacity:.35}

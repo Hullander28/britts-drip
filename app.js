@@ -44,7 +44,7 @@ function poseFor(ids){const sc={};for(const id of ids){const i=item(id);if(!i)co
  let best='casual',bv=0;for(const p in sc)if(sc[p]>bv){bv=sc[p];best=p}return best}
 function curIds(){return S.tab==='dress'&&S.dressMode==='swipe'?swIds():S.dress.map(d=>d.id)}
 function curPose(){const o=S.poseOverride;return o&&POSES[o]?o:poseFor(curIds())}
-function poseDelta(z,p){return (POSE_D[p||curPose()]||{})[z]||{}}
+function poseDelta(z,p){if(avKind()!=='drawn')return {};return (POSE_D[p||curPose()]||{})[z]||{}}
 function segT(k,p){const P=POSES[p]||POSES.casual,v=P[k]||0;return `rotate(${k[0]==='r'&&k!=='rk'&&k!=='rf'&&k!=='rl'&&k!=='ra'?v:(k[0]==='r'?-v:v)}deg)`}
 function avatarSVG(skin){const P=S.profile||{},sk=skin||'#e8b894',hc=AV_HC[P.hairColor]||P.hairColor||AV_HC.Brown,hs=AV_HAIR.includes(P.hair)?P.hair:'long';const pose=S.lastPose||'casual';
  const B={slim:[14,8.5,12.5],average:[15.5,10,14.5],curvy:[15.5,9.5,17.5],athletic:[17.5,11.5,14]}[AV_BODY.includes(P.body)?P.body:'average'];const[sh,w,h]=B,c=50;
@@ -86,7 +86,7 @@ function applyPose(p,animate){p=POSES[p]?p:'casual';document.querySelectorAll('s
  const st=$('#swstage');if(st){if(animate){st.classList.add('posing');setTimeout(()=>st.classList.remove('posing'),700)}[['t',swCur('t')],['b',swCur('b')],['s',swCur('s')]].forEach(([z,i])=>{if(i)swSetFit(z,swLive&&swLive.id===i.id?swLive.f:swFit(i))})}
  const bd=$('#board');if(bd){bd.classList.toggle('posing',!!animate);bd.querySelectorAll('img.pc').forEach(im=>{const d=S.dress[+im.dataset.pc];const it=d&&item(d.id);const z=it&&(SW_ZONE(it)||'');const D=(POSE_D[p]||{})[z]||{};im.style.transform=`translateX(${(D.dx||0)*bd.clientWidth/100}px) scale(${1+(D.ds||0)/40})`})}
  S.lastPose=p;document.querySelectorAll('[data-act=pose_set]').forEach(b=>b.classList.toggle('on',(S.poseOverride||'auto')===b.dataset.k));const a=$('#poseauto');if(a)a.textContent=POSES[p].n}
-function poseChips(){const o=S.poseOverride||'auto';return `<div class="chips posechips"><button class="chip ${o==='auto'?'on':''}" data-act="pose_set" data-k="auto">Auto · <span id="poseauto">${POSES[curPose()].n}</span></button>${Object.entries(POSES).map(([k,v])=>`<button class="chip ${o===k?'on':''}" data-act="pose_set" data-k="${k}">${v.n}</button>`).join('')}</div>`}
+function poseChips(){const o=S.poseOverride||'auto';if(avKind()!=='drawn')return `<p class="mut" style="margin:-4px 0 10px">Poses apply to the Drawn avatar only. Switch avatar in Me.</p>`;return `<div class="chips posechips"><button class="chip ${o==='auto'?'on':''}" data-act="pose_set" data-k="auto">Auto · <span id="poseauto">${POSES[curPose()].n}</span></button>${Object.entries(POSES).map(([k,v])=>`<button class="chip ${o===k?'on':''}" data-act="pose_set" data-k="${k}">${v.n}</button>`).join('')}</div>`}
 document.addEventListener('click',async e=>{const t=e.target.closest('[data-act="pose_set"]');if(!t)return;e.stopImmediatePropagation();S.poseOverride=t.dataset.k==='auto'?'':t.dataset.k;kvSet('poseOverride',S.poseOverride);applyPose(curPose(),true)},true);
 function avatarOptions(p){return `<label>Avatar hairstyle</label><div class="chips">${AV_HAIR.map(x=>`<button class="chip ${(p.hair||'long')===x?'on':''}" data-act="av_set" data-k="hair|${x}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>
  <label>Hair color</label><div class="chips">${Object.entries(AV_HC).map(([n,v])=>`<button class="chip ${(p.hairColor||'Brown')===n?'on':''}" data-act="av_set" data-k="hairColor|${n}" style="background:${v};width:34px;height:34px;padding:0" aria-label="${n}"></button>`).join('')}</div>
@@ -98,12 +98,21 @@ document.addEventListener('click',async e=>{const t=e.target.closest('[data-act=
 function fileToImg(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=u})}
 function scale(im,max=900,type='image/jpeg'){const k=Math.min(1,max/Math.max(im.naturalWidth||im.width,im.naturalHeight||im.height));const c=document.createElement('canvas');c.width=Math.round((im.naturalWidth||im.width)*k);c.height=Math.round((im.naturalHeight||im.height)*k);const x=c.getContext('2d');if(type==='image/jpeg'){x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height)}x.drawImage(im,0,0,c.width,c.height);return c}
 const loadImg=src=>new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.src=src});
-async function quickCutout(src,tol=38){const im=await loadImg(src);const c=scale(im,700,'image/png');const x=c.getContext('2d');const d=x.getImageData(0,0,c.width,c.height),p=d.data,W=c.width,H=c.height;
- const seen=new Uint8Array(W*H),st=[];const pts=[[0,0],[W-1,0],[0,H-1],[W-1,H-1],[W>>1,0],[0,H>>1],[W-1,H>>1]];
- for(const[a,b]of pts){const i=b*W+a;st.push(i)}
- const ref=pts.map(([a,b])=>{const i=(b*W+a)*4;return[p[i],p[i+1],p[i+2]]});
- const near=i=>{const o=i*4;return ref.some(r=>Math.abs(p[o]-r[0])+Math.abs(p[o+1]-r[1])+Math.abs(p[o+2]-r[2])<tol*3)};
- while(st.length){const i=st.pop();if(seen[i])continue;seen[i]=1;if(!near(i))continue;p[i*4+3]=0;const a=i%W,b=(i/W)|0;if(a>0)st.push(i-1);if(a<W-1)st.push(i+1);if(b>0)st.push(i-W);if(b<H-1)st.push(i+W)}
+async function quickCutout(src,tol=34){const im=await loadImg(src);const c=scale(im,700,'image/png');const x=c.getContext('2d');const d=x.getImageData(0,0,c.width,c.height),p=d.data,W=c.width,H=c.height;
+ // Edge-connected only: start from border pixels, grow into pixels close to the border background color AND close to their neighbour (no jumping across edges). Transparent pixels never seed colour matching.
+ const seen=new Uint8Array(W*H),st=[];const border=[];for(let X=0;X<W;X+=4){border.push(X,(H-1)*W+X)}for(let Y=0;Y<H;Y+=4){border.push(Y*W,Y*W+W-1)}
+ const refs=[];for(const i of border){const o=i*4;if(p[o+3]>200)refs.push([p[o],p[o+1],p[o+2]])}
+ if(!refs.length){x.putImageData(d,0,0);return trim(c).toDataURL('image/png')}
+ // background colour clusters (median-ish): keep up to 6 distinct
+ const ref=[];for(const r of refs){if(!ref.some(q=>Math.abs(q[0]-r[0])+Math.abs(q[1]-r[1])+Math.abs(q[2]-r[2])<tol))ref.push(r);if(ref.length>=6)break}
+ const dist=(o,r)=>Math.abs(p[o]-r[0])+Math.abs(p[o+1]-r[1])+Math.abs(p[o+2]-r[2]);
+ const isBg=o=>p[o+3]<10||ref.some(r=>dist(o,r)<tol*3);
+ for(const i of border)st.push(i,-1);
+ while(st.length){const from=st.pop(),i=st.pop();if(seen[i])continue;const o=i*4;if(!isBg(o))continue;
+  if(from>=0&&p[o+3]>=10){const f=from*4;if(p[f+3]>=10&&Math.abs(p[o]-p[f])+Math.abs(p[o+1]-p[f+1])+Math.abs(p[o+2]-p[f+2])>tol*1.5)continue}
+  seen[i]=1;p[o+3]=0;const X=i%W,Y=(i/W)|0;if(X>0)st.push(i-1,i);if(X<W-1)st.push(i+1,i);if(Y>0)st.push(i-W,i);if(Y<H-1)st.push(i+W,i)}
+ // soften 1px edge
+ for(let i=0;i<W*H;i++){if(seen[i])continue;const X=i%W,Y=(i/W)|0;if((X>0&&seen[i-1])||(X<W-1&&seen[i+1])||(Y>0&&seen[i-W])||(Y<H-1&&seen[i+W]))p[i*4+3]=Math.min(p[i*4+3],170)}
  x.putImageData(d,0,0);return trim(c).toDataURL('image/png')}
 function trim(c){const x=c.getContext('2d'),d=x.getImageData(0,0,c.width,c.height).data;let a=c.width,b=c.height,e=0,f=0;for(let y=0;y<c.height;y++)for(let X=0;X<c.width;X++)if(d[(y*c.width+X)*4+3]>10){if(X<a)a=X;if(X>e)e=X;if(y<b)b=y;if(y>f)f=y}
  if(e<=a||f<=b)return c;const o=document.createElement('canvas');o.width=e-a+1;o.height=f-b+1;o.getContext('2d').drawImage(c,a,b,o.width,o.height,0,0,o.width,o.height);return o}
@@ -232,7 +241,7 @@ function vCloset(){let L=S.items.filter(i=>(S.cat==='All'||i.cat===S.cat||(S.cat
  <button class="fab" data-act="add" aria-label="Add item">+</button>`}
 
 function vDress(){if(S.dressMode==='swipe')return vSwipe();const picked=S.dress.map(d=>item(d.id)).filter(Boolean);
- return `<h2>Dress Me</h2>${modeTabs()}<div class="board" id="board">${S.profile.photo&&S.profile.useOnBoard?`<img src="${S.profile.photo}" class="av" style="object-fit:contain;opacity:.95">`:avatarSVG(S.profile.skin)}
+ return `<h2>Dress Me</h2>${modeTabs()}<div class="board" id="board">${avatarBody('board')}
  ${S.dress.map((d,k)=>{const i=item(d.id);return i?`<img class="pc" src="${i.img}" data-pc="${k}" style="left:${d.x}px;top:${d.y}px;width:${d.w}px;z-index:${k+2}">`:''}).join('')}</div>
  <p class="mut">Drag pieces to arrange. Tap a piece below to add or remove. Use −/+ to resize the last piece you touched.</p>
  <div class="row"><button class="btn sm sec" data-act="szm">−</button><button class="btn sm sec" data-act="szp">+</button><button class="btn sm sec" data-act="clearb">Clear</button><button class="btn sm" data-act="saveb" ${picked.length?'':'disabled'}>Save outfit</button><button class="btn sm sec" data-act="wearb" ${picked.length?'':'disabled'}>Wear today</button></div>
@@ -491,7 +500,7 @@ function swAccs(){S.swAcc=(S.swAcc||[]).filter(id=>item(id));return S.swAcc.map(
 function vSwipe(){const t=swCur('t'),b=swCur('b'),s=swCur('s');const adj=S.swAdj||'';const accs=swAccs();
  const pos=(z,i)=>{const L=swList(z);return i?`${isShop(i)?'🛍 ':''}${esc(i.name||i.cat)} · ${L.indexOf(i)+1}/${L.length}`:(L.length?`None · ${L.length+1}/${L.length+1}`:'No '+ZN[z])};
  const need=S.items.filter(i=>(SW_ZONE(i)||i.cat==='Accessories')&&!i.cut).length;
- const body=S.profile.photo?`<img src="${S.profile.photo}" class="swbody" alt="" draggable="false">`:`<div class="swbody">${avatarSVG(S.profile.skin)}</div>`;
+ const body=avatarBody('swipe');
  const af=adj?swCur(adj):null;const f=af?swFit(af):null;const allAcc=S.items.filter(i=>i.cat==='Accessories');
  const zone=z=>`<div class="swz" data-z="${z}"><button class="swa" data-act="sw_${z}_prev" aria-label="Previous ${ZN[z]}">‹</button><span class="swlab">${pos(z,z==='t'?t:z==='b'?b:s)}</span><button class="swa" data-act="sw_${z}_next" aria-label="Next ${ZN[z]}">›</button></div>`;
  return `<h2>Dress Me</h2>${modeTabs()}
@@ -720,3 +729,73 @@ xInit();
 /* ===== Pose hook ===== */
 const _render0=render;render=function(){_render0();if(S.tab==='dress'){const p=curPose();requestAnimationFrame(()=>requestAnimationFrame(()=>applyPose(p,p!==S.lastPose)))}};
 kvGet&&setTimeout(async()=>{for(let k=0;k<100&&!db;k++)await new Promise(r=>setTimeout(r,50));S.poseOverride=await kvGet('poseOverride','');if(S.tab==='dress')render()},0);
+
+/* ===== Photo / AI avatar ===== */
+const AVF={w:400,h:880};// same 100:220 frame as the drawn avatar
+const AV_GUIDE={head:5,shoulder:41,hip:108,feet:205};// viewBox units (of 220)
+function avKind(){const p=S.profile||{};const m=p.avMode||(p.photo&&p.useOnBoard?'legacy':'drawn');if(m==='photo'&&p.avPhoto)return'photo';if(m==='ai'&&p.avAI)return'ai';if(m==='legacy')return'legacy';return'drawn'}
+function avatarBody(where){const k=avKind(),p=S.profile;const src=k==='photo'?p.avPhoto:k==='ai'?p.avAI:k==='legacy'?p.photo:'';
+ if(!src)return where==='swipe'?`<div class="swbody">${avatarSVG(p.skin)}</div>`:avatarSVG(p.skin);
+ return where==='swipe'?`<img src="${src}" class="swbody" alt="" draggable="false">`:`<img src="${src}" class="av" alt="" style="object-fit:contain">`}
+function ghostSVG(){const lp=S.lastPose;S.lastPose='work';const inner=avatarSVG('#ffffff').replace(/^<svg[^>]*>/,'').replace(/<\/svg>$/,'');S.lastPose=lp;return `<svg class="ghost" viewBox="0 0 100 220" preserveAspectRatio="xMidYMid meet"><g opacity=".9">${inner}</g>
+ ${Object.entries(AV_GUIDE).map(([k,y])=>`<line x1="4" x2="96" y1="${y}" y2="${y}" stroke="#7c3aed" stroke-width=".5" stroke-dasharray="2 1.5"/><text x="3" y="${y-1}" font-size="4" fill="#7c3aed">${k}</text>`).join('')}</svg>`}
+// Auto-fit: trimmed person spans head→feet guide, centred
+async function autoAlign(cut){const im=await loadImg(cut);const W=AVF.w,H=AVF.h;const top=AV_GUIDE.head/220*H,bot=AV_GUIDE.feet/220*H;const sc=(bot-top)/im.naturalHeight;return{x:W/2-im.naturalWidth*sc/2,y:top,s:sc}}
+async function renderAligned(cut,t){const im=await loadImg(cut);const c=document.createElement('canvas');c.width=AVF.w;c.height=AVF.h;c.getContext('2d').drawImage(im,t.x,t.y,im.naturalWidth*t.s,im.naturalHeight*t.s);return c.toDataURL('image/png')}
+let avDraft=null;// {cut,t,kind}
+function alignSheet(){const d=avDraft;openSheet(`<div class="row sp"><h2 style="margin:0">Line up your avatar</h2><button class="btn sm sec" data-act="close">✕</button></div>
+ <p class="mut">Drag and pinch (or use the slider) so your shoulders, hips and feet sit on the dashed lines. Clothes snap to these lines.</p>
+ <div class="alignbox" id="alignbox">${ghostSVG()}<img id="alignimg" src="${d.cut}" alt="" draggable="false"></div>
+ <label>Size</label><input type="range" id="al_s" min="20" max="300" step="1" value="100">
+ <div class="row" style="margin-top:8px"><button class="btn" data-act="pav_save">Use this avatar</button><button class="btn sec" data-act="pav_auto">Auto-fit</button></div>`);
+ const box=$('#alignbox'),img=$('#alignimg');let base=d.t.s;const fit=()=>{const k=box.clientWidth/AVF.w;img.style.width=img.naturalWidth*d.t.s*k+'px';img.style.left=d.t.x*k+'px';img.style.top=d.t.y*k+'px'};
+ img.onload=fit;if(img.complete)fit();$('#al_s').oninput=e=>{const im=img,cx=d.t.x+im.naturalWidth*d.t.s/2,cy=d.t.y+im.naturalHeight*d.t.s/2;d.t.s=base*e.target.value/100;d.t.x=cx-im.naturalWidth*d.t.s/2;d.t.y=cy-im.naturalHeight*d.t.s/2;fit()};
+ const P=new Map();let g=null;box.onpointerdown=e=>{P.set(e.pointerId,{x:e.clientX,y:e.clientY});box.setPointerCapture?.(e.pointerId);g={t:{...d.t},p:[...P.values()].map(q=>({...q})),d0:0}};
+ box.onpointermove=e=>{if(!P.has(e.pointerId)||!g)return;e.preventDefault();P.set(e.pointerId,{x:e.clientX,y:e.clientY});const k=box.clientWidth/AVF.w,pts=[...P.values()];
+  if(pts.length>=2){const dd=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);if(!g.d0){g.d0=dd;g.t={...d.t}}const ns=g.t.s*dd/g.d0,iw=img.naturalWidth,ih=img.naturalHeight;d.t.s=ns;d.t.x=g.t.x+iw*(g.t.s-ns)/2;d.t.y=g.t.y+ih*(g.t.s-ns)/2;$('#al_s').value=Math.round(ns/base*100)}
+  else{d.t.x=g.t.x+(pts[0].x-g.p[0].x)/k;d.t.y=g.t.y+(pts[0].y-g.p[0].y)/k}fit()};
+ box.onpointerup=box.onpointercancel=e=>{P.delete(e.pointerId);g=P.size?{t:{...d.t},p:[...P.values()].map(q=>({...q})),d0:0}:null}}
+async function startAvatarFrom(src,kind){toast('Removing background on your phone…');let cut;try{cut=await makeCutout(src)}catch(e){cut=src}
+ avDraft={cut,kind,orig:src,t:await autoAlign(cut)};alignSheet()}
+// Live camera with ghost overlay (falls back to file picker)
+let camStream=null,camFacing='environment';
+async function cameraSheet(){openSheet(`<div class="row sp"><h2 style="margin:0">Full-body photo</h2><button class="btn sm sec" data-act="pav_camclose">✕</button></div>
+ <p class="mut">Stand back so your whole body fits the outline: head at top, feet on the bottom line, arms a little away from your sides. Plain wall behind you works best.</p>
+ <div class="cambox"><video id="pav_vid" playsinline muted autoplay></video>${ghostSVG()}</div>
+ <div class="row" style="margin-top:8px"><button class="btn" data-act="pav_shoot">📸 Take photo</button><button class="btn sec" data-act="pav_flip">Flip camera</button><button class="btn sec" data-act="pav_timer">3s timer</button></div>`);
+ try{camStream?.getTracks().forEach(t=>t.stop());camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:camFacing,height:{ideal:1920}},audio:false});const v=$('#pav_vid');v.srcObject=camStream;await v.play().catch(()=>{})}
+ catch(e){closeCam();toast('Camera not available, pick a photo instead');$('#pav_file')?.click()}}
+function closeCam(){camStream?.getTracks().forEach(t=>t.stop());camStream=null}
+async function shoot(){const v=$('#pav_vid');if(!v||!v.videoWidth)return toast('Camera not ready');const c=document.createElement('canvas');const ar=100/220;let w=v.videoWidth,h=v.videoHeight,cw=Math.min(w,h*ar),ch=cw/ar;c.width=Math.round(cw);c.height=Math.round(ch);c.getContext('2d').drawImage(v,(w-cw)/2,(h-ch)/2,cw,ch,0,0,cw,ch);closeCam();const src=scale(c,1100).toDataURL('image/jpeg',.9);await startAvatarFrom(src,'photo')}
+async function stylize(){const base=workerBase();if(!base)return toast('Set the Worker URL in Me first');const p=S.profile;const src=p.avPhoto||p.photo;if(!src)return toast('Make a Photo avatar first');
+ if(!confirm('Send your photo to your try-on Worker → fal.ai (FLUX Kontext) to draw an illustrated avatar? Cost ≈ $0.025.'))return;
+ const msg=$('#pav_msg');if(msg)msg.textContent='Styling… usually 10–30 seconds.';
+ try{const im=await loadImg(src);const c=scale(im,1000,'image/jpeg');const person=c.toDataURL('image/jpeg',.88);// ~0.45 MP → billed as 1 MP
+  const ctrl=new AbortController();const tm=setTimeout(()=>ctrl.abort(),120000);const r=await fetch(base+'/stylize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({person}),signal:ctrl.signal});clearTimeout(tm);
+  const j=await r.json().catch(()=>({}));if(!r.ok||!j.imageUrl)throw new Error(j.error||('Failed ('+r.status+')'));
+  const data=await urlToDataUrl(j.imageUrl);await startAvatarFrom(data,'ai')}catch(e){if(msg)msg.textContent='';toast('Stylize failed: '+(e.message||e))}}
+function avatarCard(){const p=S.profile,k=avKind(),m=p.avMode||'drawn';const opt=(v,l,ok)=>`<button class="chip ${m===v?'on':''}" data-act="pav_mode" data-k="${v}" ${ok?'':'disabled'}>${l}</button>`;
+ const prev=k==='drawn'?avatarSVG(p.skin):`<img src="${k==='photo'?p.avPhoto:k==='ai'?p.avAI:p.photo}" style="width:100%;height:100%;object-fit:contain">`;
+ return `<div class="card"><div class="row sp"><b>My avatar</b><span class="badge">${k==='drawn'?'Drawn':k==='photo'?'Photo':k==='ai'?'AI-styled':'Body photo'}</span></div>
+ <div class="chips" style="margin-top:8px">${opt('drawn','Drawn',1)}${opt('photo','Photo',!!p.avPhoto)}${opt('ai','AI-styled',!!p.avAI)}</div>
+ <div class="row" style="flex-wrap:nowrap;margin-top:8px;align-items:flex-start"><div class="avprev" style="margin:0;flex:none">${prev}</div>
+ <div style="flex:1"><p class="mut" style="margin-top:0">Poses work with the Drawn avatar only. Photo and AI avatars stay still, and clothes line up on the dashed guides.</p>
+ <button class="btn sm full" data-act="pav_cam">📷 Snap with outline</button><label class="btn sm sec full" style="text-align:center;margin-top:6px">🖼 Upload full-body photo<input type="file" accept="image/*" id="pav_file" hidden></label>
+ ${p.avPhoto||p.avAI?'<button class="btn sm sec full" style="margin-top:6px" data-act="pav_realign">Re-align</button>':''}
+ <button class="btn sm sec full" style="margin-top:6px" data-act="pav_ai" ${p.avPhoto||p.photo?'':'disabled'}>✨ Stylize with AI (~$0.025)</button>${p.avPhoto||p.avAI?'<button class="btn sm sec full" style="margin-top:6px" data-act="pav_del">Delete photo avatars</button>':''}<p class="mut" id="pav_msg"></p></div></div>
+ <p class="mut" style="font-size:12px"><b>Privacy:</b> Your photos and avatar stay on this device. Background removal runs on your phone. Only if you tap “Stylize with AI” is the photo sent to your Worker and fal.ai to be processed.</p></div>`}
+const _vMe1=vMe;vMe=function(){const h=_vMe1();const i=h.indexOf('</h2>');return i>=0?h.slice(0,i+5)+avatarCard()+h.slice(i+5):avatarCard()+h};
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-act^="pav_"]');if(!t)return;e.stopImmediatePropagation();const A=t.dataset.act,p=S.profile;
+ if(A==='pav_mode'){p.avMode=t.dataset.k;await kvSet('profile',p);return render()}
+ if(A==='pav_cam'){if(!navigator.mediaDevices?.getUserMedia){return $('#pav_file')?.click()}return cameraSheet()}
+ if(A==='pav_camclose'){closeCam();return closeSheet()}
+ if(A==='pav_flip'){camFacing=camFacing==='environment'?'user':'environment';return cameraSheet()}
+ if(A==='pav_shoot')return shoot();
+ if(A==='pav_timer'){let n=3;t.disabled=true;const iv=setInterval(()=>{t.textContent=n?n+'…':'📸';if(n--<=0){clearInterval(iv);shoot()}},1000);return}
+ if(A==='pav_auto'){avDraft.t=await autoAlign(avDraft.cut);return alignSheet()}
+ if(A==='pav_save'){const out=await renderAligned(avDraft.cut,avDraft.t);if(avDraft.kind==='ai'){p.avAI=out;p.avAIcut=avDraft.cut;p.avAIt=avDraft.t;p.avMode='ai'}else{p.avPhoto=out;p.avCut=avDraft.cut;p.avT=avDraft.t;p.avMode='photo'}await kvSet('profile',p);avDraft=null;closeSheet();toast('Avatar saved on this device');return render()}
+ if(A==='pav_realign'){const ai=avKind()==='ai';const cut=ai?p.avAIcut:p.avCut;if(!cut)return;avDraft={cut,kind:ai?'ai':'photo',t:{...(ai?p.avAIt:p.avT)}};return alignSheet()}
+ if(A==='pav_ai')return stylize();
+ if(A==='pav_del'){if(!confirm('Delete your photo and AI avatars from this device?'))return;['avPhoto','avCut','avT','avAI','avAIcut','avAIt'].forEach(k=>delete p[k]);p.avMode='drawn';await kvSet('profile',p);return render()}
+},true);
+document.addEventListener('change',async e=>{if(e.target.id!=='pav_file')return;e.stopImmediatePropagation();const f=e.target.files[0];if(!f)return;const im=await fileToImg(f);await startAvatarFrom(scale(im,1100).toDataURL('image/jpeg',.9),'photo')},true);

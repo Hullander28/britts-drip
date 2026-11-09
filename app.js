@@ -18,6 +18,11 @@ const OCC=['Casual','Work','Date','Dinner','Party','Workout','Formal','Lounge','
 const MOODS={Chill:['Casual','Lounge'],Cozy:['Lounge','Casual'],Bold:['Party','Date'],Work:['Work','Formal'],Date:['Date','Party'],Active:['Workout','Casual']};
 const COLORS={Black:'#111',White:'#f5f5f5',Gray:'#9ca3af',Navy:'#1e3a8a',Blue:'#3b82f6',Red:'#dc2626',Pink:'#ec4899',Purple:'#8b5cf6',Green:'#16a34a',Yellow:'#facc15',Orange:'#f97316',Brown:'#92400e',Beige:'#d6c3a5',Multi:'linear-gradient(90deg,red,orange,green,blue)'};
 const $=s=>document.querySelector(s);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const poss=n=>{n=String(n||'').trim();return !n?'':/s$/i.test(n)?n+"'":n+"'s"};
+const dripName=()=>(S.profile.name||'').trim().slice(0,40);
+const dripTitle=()=>{const n=dripName();return n?poss(n)+' Drip':'Britts Drip'};
+function applyBrand(){const t=dripTitle(),n=dripName();document.title=t;const b=$('.brand');if(b)b.innerHTML=n?`${esc(poss(n))} <b>Drip</b>`:`Britts <b>Drip</b>`;const m=document.querySelector('meta[name=apple-mobile-web-app-title]');if(m)m.content=t}
+function takeNameQuery(){try{const u=new URL(location.href);if(!u.searchParams.has('name'))return'';const raw=(u.searchParams.get('name')||'').trim().slice(0,40);u.searchParams.delete('name');const qs=u.searchParams.toString();history.replaceState(null,'',u.pathname+(qs?'?'+qs:'')+u.hash);return raw}catch(e){return''}}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const today=()=>ymd(new Date());function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 const daysAgo=d=>d?Math.floor((Date.now()-new Date(d+'T12:00').getTime())/864e5):Infinity;
@@ -198,7 +203,7 @@ function openAiResult(result, garmentIds){
   ${mock?'<p><span class="badge demo">MOCK — not fal.ai</span></p>':''}
   <img src="${result.final}" class="prev" style="margin-top:10px" alt="AI try-on">
   <p class="mut">Cost: ~4¢ per garment image (fal.ai). This run used <b>${result.steps.length}</b> image${result.steps.length===1?'':'s'} ≈ <b>$${(result.steps.length*0.04).toFixed(2)}</b>.</p>
-  <p class="mut">Photos were sent to your try-on Worker (and fal.ai when live) only for this request. Britts Drip does not keep a cloud copy.</p>
+  <p class="mut">Photos were sent to your try-on Worker (and fal.ai when live) only for this request. ${esc(dripTitle())} does not keep a cloud copy.</p>
   <label>Save as outfit name</label><input id="ai_name" value="AI look · ${new Date().toLocaleDateString()}">
   <div class="row" style="margin-top:12px"><button class="btn" data-act="aisave">Save outfit</button>
   <button class="btn sec" data-act="aiwear">Wear / log today</button>
@@ -206,7 +211,7 @@ function openAiResult(result, garmentIds){
 }
 
 /* ===== Render ===== */
-function render(){document.documentElement.classList.toggle('dark',!!S.settings.dark);document.querySelector('meta[name=theme-color]').content=S.settings.dark?'#0f0f14':'#7c3aed';
+function render(){applyBrand();document.documentElement.classList.toggle('dark',!!S.settings.dark);document.querySelector('meta[name=theme-color]').content=S.settings.dark?'#0f0f14':'#7c3aed';
  $('#tabs').innerHTML=TABS.map(([k,l])=>`<button data-tab="${k}" class="${S.tab===k?'on':''}" aria-label="${l}">${icon(k)}<span>${l}</span></button>`).join('');
  const v={today:vToday,closet:vCloset,dress:vDress,plan:vPlan,alerts:vAlerts,me:vMe}[S.tab]();$('#view').innerHTML=v;$('#topAct').innerHTML=S.profile.photo?`<img src="${S.profile.photo}" class="avatarImg" style="width:34px;height:34px" data-tab="me">`:'';
  if(S.tab==='dress'){if(S.dressMode==='swipe')initSwipe();else initBoard()}window.scrollTo(0,0)}
@@ -293,7 +298,7 @@ function vAlerts(){const A=computeAlerts();const s=S.items.find(i=>i.cat==='Bott
  <div><b>30% off rain coats</b><p class="mut">Example ad: a sale coat shown on your avatar${s?' with your own '+esc(s.name):''}. Not a real offer or brand.</p></div></div></div>`}
 
 function vMe(){const s=S.settings,p=S.profile;const tw=S.items.reduce((a,i)=>a+(i.wears||0),0);const priced=S.items.filter(i=>i.price>0);const spent=priced.reduce((a,i)=>a+ +i.price,0);
- return `<h2>Profile</h2><div class="card"><div class="row" style="flex-wrap:nowrap">${p.photo?`<img src="${p.photo}" class="avatarImg">`:`<div class="avatarImg" style="display:flex;align-items:center;justify-content:center">👤</div>`}<div style="flex:1"><input id="pname" placeholder="Your name" value="${esc(p.name)}"></div></div>
+ return `<h2>Profile</h2><div class="card"><div class="row" style="flex-wrap:nowrap">${p.photo?`<img src="${p.photo}" class="avatarImg">`:`<div class="avatarImg" style="display:flex;align-items:center;justify-content:center">👤</div>`}<div style="flex:1"><label>Your name</label><input id="pname" placeholder="e.g. Brittney or Steven" value="${esc(p.name)}" maxlength="40"><p class="mut" style="margin:6px 0 0">Header shows <b>${esc(dripTitle())}</b>. Leave blank for Britts Drip. Share a link with <code>?name=Steven</code> to prefill on a new phone.</p></div></div>
  <div class="row" style="margin-top:10px"><label class="btn sm sec" style="margin:0;color:var(--tx)">📷 Body photo<input type="file" accept="image/*" capture="user" id="bodycam" hidden></label><label class="btn sm sec" style="margin:0;color:var(--tx)">🖼 From gallery<input type="file" accept="image/*" id="bodygal" hidden></label>${p.photo?'<button class="btn sm sec" data-act="delbody">Delete photo</button>':''}</div>
  ${p.photo?`<div class="tog"><span>Use my body photo on Dress Me board</span><input type="checkbox" id="useboard" style="width:auto" ${p.useOnBoard?'checked':''}></div>`:''}
  <label>Stylized avatar skin tone</label><div class="chips">${['#f6d7c3','#e8b894','#c68c5f','#8d5a3b','#5a3825','#3b2417'].map(c=>`<button class="chip ${p.skin===c?'on':''}" data-skin="${c}" style="background:${c};width:34px;height:34px;padding:0"></button>`).join('')}</div>${avatarOptions(p)}
@@ -309,7 +314,7 @@ function vMe(){const s=S.settings,p=S.profile;const tw=S.items.reduce((a,i)=>a+(
  <div class="row" style="margin-top:8px"><button class="btn sm sec" data-act="saveworker">Save Worker URL</button><button class="btn sm sec" data-act="pingworker">Test connection</button></div>
  <div class="row" style="margin-top:12px"><button class="btn sm sec" data-act="export">Export closet (JSON)</button><label class="btn sm sec" style="margin:0;color:var(--tx)">Import JSON<input type="file" accept="application/json,.json" id="imp" hidden></label></div>
  <button class="btn dng full" style="margin-top:14px" data-act="wipe">Delete all data</button></div>
- <p class="mut">Britts Drip sample app v1. Closet data stays on this device. Weather by Open-Meteo.com. AI try-on by fal.ai when configured.</p>`}
+ <p class="mut">${esc(dripTitle())} · sample app v1. Closet data stays on this device. Weather by Open-Meteo.com. AI try-on by fal.ai when configured.</p>`}
 
 /* ===== Item editor ===== */
 let draft=null;
@@ -415,7 +420,7 @@ document.addEventListener('click',async e=>{const t=e.target.closest('[data-tab]
  if(A==='tripgo')return buildTrip();
  if(A==='delbody'){S.profile.photo='';S.profile.useOnBoard=false;await kvSet('profile',S.profile);return render()}
  if(A==='resetwx'){Object.assign(S.settings,{lat:null,lon:null,place:''});S.wx=null;await kvSet('settings',S.settings);S.tab='today';return render()}
- if(A==='export'){const data={app:'britts-drip',version:1,exported:new Date().toISOString(),items:S.items,outfits:S.outfits,plans:S.plans,history:S.history,profile:{...S.profile,photo:''}};const b=new Blob([JSON.stringify(data)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='britts-drip-closet-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();return toast('Exported (body photo not included)')}
+ if(A==='export'){const data={app:'britts-drip',version:1,exported:new Date().toISOString(),items:S.items,outfits:S.outfits,plans:S.plans,history:S.history,profile:{...S.profile,photo:''}};const b=new Blob([JSON.stringify(data)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='britts-drip-closet-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();return toast('Exported (body photo not included; your name is in the file but import keeps the recipient\'s name)')}
  if(A==='aitryon'){
   if(!workerBase()){toast('Set Worker URL in Me first (or use local mock http://127.0.0.1:8788)');S.tab='me';return render()}
   if(!S.profile.photo){toast('Add a body photo in Me first');S.tab='me';return render()}
@@ -458,20 +463,20 @@ document.addEventListener('click',async e=>{const t=e.target.closest('[data-tab]
  if(A==='wipe'){if(!confirm('Delete ALL items, outfits, photos and history from this device?'))return;for(const s of STORES)await clr(s);location.reload()}
 });
 $('#sheet').addEventListener('click',e=>{if(e.target.id==='sheet')closeSheet()});
-document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value;const pos=e.target.selectionStart;render();const q=$('#q');q.focus();q.setSelectionRange(pos,pos)}if(e.target.id==='f_warmth')$('#wv').textContent=['','Very light','Light','Medium','Warm','Heavy'][e.target.value]});
+document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value;const pos=e.target.selectionStart;render();const q=$('#q');q.focus();q.setSelectionRange(pos,pos)}if(e.target.id==='f_warmth')$('#wv').textContent=['','Very light','Light','Medium','Warm','Heavy'][e.target.value];if(e.target.id==='pname'){S.profile.name=e.target.value.trim().slice(0,40);applyBrand()}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='city'){const v=e.target.value.trim();if(v)setCity(v)}});
 document.addEventListener('change',async e=>{const id=e.target.id;
  if(id==='sort'){S.sort=e.target.value;return render()}if(id==='lfilter'){S.laundry=e.target.value;return render()}
  if(id==='cam'||id==='gal'){try{await handleItemFiles([...e.target.files])}catch(err){toast('Could not read photo')}return}
  if(id==='bodycam'||id==='bodygal'){const f=e.target.files[0];if(!f)return;const im=await fileToImg(f);S.profile.photo=scale(im,900).toDataURL('image/jpeg',.85);await kvSet('profile',S.profile);toast('Body photo saved on this device');return render()}
  if(id==='useboard'){S.profile.useOnBoard=e.target.checked;await kvSet('profile',S.profile);return}
- if(id==='pname'){S.profile.name=e.target.value.trim();await kvSet('profile',S.profile);return}
+ if(id==='pname'){S.profile.name=e.target.value.trim().slice(0,40);await kvSet('profile',S.profile);applyBrand();return}
  if(id==='dark'){S.settings.dark=e.target.checked;await kvSet('settings',S.settings);return render()}
  if(id==='imp'){const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(d.app!=='britts-drip')throw 0;for(const i of d.items||[])await put('items',i);for(const o of d.outfits||[])await put('outfits',o);S.plans={...S.plans,...(d.plans||{})};S.history=[...S.history,...(d.history||[]).filter(h=>!S.history.some(x=>x.id===h.id))];await kvSet('plans',S.plans);await kvSet('history',S.history);await boot(true);toast('Imported '+(d.items||[]).length+' items')}catch(err){toast('Not a Britts Drip export file')}}
 });
 
 /* ===== Boot ===== */
-async function boot(reload){if(!reload)await openDB();S.items=(await all('items')).sort((a,b)=>b.created-a.created);S.outfits=(await all('outfits')).sort((a,b)=>b.created-a.created);S.plans=await kvGet('plans',{});S.history=await kvGet('history',[]);S.profile=Object.assign(S.profile,await kvGet('profile',{}));S.settings=Object.assign(S.settings,await kvGet('settings',{}));S.dress=await kvGet('dress',[]);S.dismissed=await kvGet('dismissed',[]);S.dressMode=await kvGet('dressMode','board');S.swipe=await kvGet('swipe',{t:0,b:0});render();loadWeather()}
+async function boot(reload){if(!reload)await openDB();S.items=(await all('items')).sort((a,b)=>b.created-a.created);S.outfits=(await all('outfits')).sort((a,b)=>b.created-a.created);S.plans=await kvGet('plans',{});S.history=await kvGet('history',[]);S.profile=Object.assign(S.profile,await kvGet('profile',{}));S.settings=Object.assign(S.settings,await kvGet('settings',{}));S.dress=await kvGet('dress',[]);S.dismissed=await kvGet('dismissed',[]);S.dressMode=await kvGet('dressMode','board');S.swipe=await kvGet('swipe',{t:0,b:0});const qn=takeNameQuery();if(qn&&!dripName()){S.profile.name=qn;await kvSet('profile',S.profile)}render();loadWeather()}
 boot().catch(e=>{$('#view').innerHTML='<div class="card">Storage unavailable: '+esc(e.message)+'. Private browsing can block it.</div>'});
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
@@ -632,7 +637,6 @@ function cleanShare(p){if(!p||p.app!=='britts-drip-share'||!Array.isArray(p.item
  return{id:uid(),kind:['closet','outfit','wishlist','suggestion'].includes(p.kind)?p.kind:'closet',owner:String(p.owner||'Someone').slice(0,40),to:String(p.to||'').slice(0,40),name:String(p.name||'').slice(0,80),items:it,outfitIds:(Array.isArray(p.outfitIds)?p.outfitIds:[]).map(String).slice(0,20),received:Date.now()}}
 async function importShare(p){const s=cleanShare(p);S.shared=[s,...(S.shared||[])].slice(0,30);await kvSet('shared',S.shared);toast('Received '+s.owner+"'s "+s.kind);openShared(s.id)}
 async function importBytes(u8){let txt;if(u8[0]===0x1f&&u8[1]===0x8b)txt=await gunz(u8);else txt=new TextDecoder().decode(u8);return importShare(JSON.parse(txt))}
-const poss=n=>/s$/i.test(n)?n+"'":n+"'s";
 function sharedList(){const L=S.shared||[];openSheet(`<div class="row sp"><h2 style="margin:0">Shared with me</h2><button class="btn sm sec" data-act="close">✕</button></div>
  ${L.length?L.map(s=>`<div class="card"><div class="row sp"><b>${esc(s.kind==='suggestion'?'Outfit idea from '+s.owner:poss(s.owner)+' '+(s.kind==='wishlist'?'gift ideas':s.kind))}</b><span><button class="btn sm sec" data-act="x_open" data-k="${s.id}">Open</button> <button class="btn sm sec" data-act="x_sdel" data-k="${s.id}">✕</button></span></div><p class="mut">${s.items.length} item(s) · ${new Date(s.received).toLocaleDateString()}</p></div>`).join(''):'<p class="mut">Nothing yet. When someone sends you a Britts Drip link or file, open it here.</p>'}
  <label class="btn sec full" style="text-align:center;margin-top:8px">Import shared file<input type="file" id="x_imp" accept=".bdrip,.json,application/json,application/octet-stream" hidden></label>`)}
@@ -667,7 +671,7 @@ const isIOSSafari=()=>isIOS()&&!/CriOS|FxiOS|EdgiOS|GSA\//.test(navigator.userAg
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();bip=e;showInstall('android')});
 async function showInstall(kind){if(standalone()||$('#x_inst'))return;const seen=await kvGet('installTip',false).catch(()=>false);if(seen)return;
  const d=document.createElement('div');d.id='x_inst';d.className='instbar';
- d.innerHTML=kind==='ios'?`<div><b>Add Britts Drip to your Home Screen</b><br>Tap <span class="ishare">Share ⬆︎</span> at the bottom of Safari, then <b>Add to Home Screen</b>.</div><button class="btn sm sec" data-act="x_instx">Got it</button>`:`<div><b>Install Britts Drip</b><br>Opens full-screen like an app.</div><button class="btn sm" data-act="x_instgo">Install</button><button class="btn sm sec" data-act="x_instx">✕</button>`;document.body.appendChild(d)}
+ d.innerHTML=kind==='ios'?`<div><b>Add ${esc(dripTitle())} to your Home Screen</b><br>Tap <span class="ishare">Share ⬆︎</span> at the bottom of Safari, then <b>Add to Home Screen</b>.</div><button class="btn sm sec" data-act="x_instx">Got it</button>`:`<div><b>Install ${esc(dripTitle())}</b><br>Opens full-screen like an app.</div><button class="btn sm" data-act="x_instgo">Install</button><button class="btn sm sec" data-act="x_instx">✕</button>`;document.body.appendChild(d)}
 
 /* ===== Wrapped views ===== */
 const _vCloset0=vCloset;vCloset=function(){const n=(S.shared||[]).length;return `<div class="row xrow"><button class="btn sm sec" data-act="x_tray">📷 Snap several</button><button class="btn sm sec" data-act="x_store">🔗 From store</button><button class="btn sm sec" data-act="x_sharecl">Share closet</button><button class="btn sm sec" data-act="x_shared">Shared with me${n?' ('+n+')':''}</button></div>`+_vCloset0()};

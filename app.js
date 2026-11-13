@@ -162,7 +162,7 @@ function applyPose(p,animate){p=POSES[p]?p:'casual';document.querySelectorAll('s
  const st=$('#swstage');if(st){if(animate){st.classList.add('posing');setTimeout(()=>st.classList.remove('posing'),700)}[['t',swCur('t')],['b',swCur('b')],['s',swCur('s')]].forEach(([z,i])=>{if(i)swSetFit(z,swLive&&swLive.id===i.id?swLive.f:swFit(i))})}
  const bd=$('#board');if(bd){bd.classList.toggle('posing',!!animate);bd.querySelectorAll('img.pc').forEach(im=>{const d=S.dress[+im.dataset.pc];const it=d&&item(d.id);const z=it&&(SW_ZONE(it)||'');const D=(POSE_D[p]||{})[z]||{};const rot=d&&d.r||it&&it.fit&&it.fit.r||0;im.style.transform=`translateX(${(D.dx||0)*bd.clientWidth/100}px) scale(${1+(D.ds||0)/40}) rotate(${rot}deg)`})}
  S.lastPose=p;document.querySelectorAll('[data-act=pose_set]').forEach(b=>b.classList.toggle('on',(S.poseOverride||'auto')===b.dataset.k));const a=$('#poseauto');if(a)a.textContent=POSES[p].n}
-function poseChips(){const o=S.poseOverride||'auto';if(avKind()!=='drawn')return `<p class="mut" style="margin:-4px 0 10px">Poses apply to the Drawn avatar only. Switch avatar in Me.</p>`;return `<div class="chips posechips"><button class="chip ${o==='auto'?'on':''}" data-act="pose_set" data-k="auto">Auto · <span id="poseauto">${POSES[curPose()].n}</span></button>${Object.entries(POSES).map(([k,v])=>`<button class="chip ${o===k?'on':''}" data-act="pose_set" data-k="${k}">${v.n}</button>`).join('')}</div>`}
+function poseChips(){const o=S.poseOverride||'auto';if(avKind()!=='drawn')return `<p class="mut" style="margin:-4px 0 10px">Poses apply to the drawn fallback only. An illustrated avatar stays in this standing pose.</p>`;return `<div class="chips posechips"><button class="chip ${o==='auto'?'on':''}" data-act="pose_set" data-k="auto">Auto · <span id="poseauto">${POSES[curPose()].n}</span></button>${Object.entries(POSES).map(([k,v])=>`<button class="chip ${o===k?'on':''}" data-act="pose_set" data-k="${k}">${v.n}</button>`).join('')}</div>`}
 document.addEventListener('click',async e=>{const t=e.target.closest('[data-act="pose_set"]');if(!t)return;e.stopImmediatePropagation();S.poseOverride=t.dataset.k==='auto'?'':t.dataset.k;kvSet('poseOverride',S.poseOverride);applyPose(curPose(),true)},true);
 function measFields(p){const u=p.measUnit==='cm'?'cm':'in';const show=k=>{if(!hasMeas(p,k))return'';const v=+p[k];return u==='cm'?inToCm(v):v};
  const hin=heightIn(p);const ft=Math.floor(hin/12),inch=Math.round((hin-ft*12)*2)/2;
@@ -899,7 +899,16 @@ kvGet&&setTimeout(async()=>{for(let k=0;k<100&&!db;k++)await new Promise(r=>setT
 /* ===== Photo / AI avatar ===== */
 const AVF={w:400,h:880};// same 100:220 frame as the drawn avatar
 const AV_GUIDE=()=>avGuide({heightIn:66,body:'average'});// photo align uses the default 5'6" figure
-function avKind(){const p=S.profile||{};const m=p.avMode||(p.photo&&p.useOnBoard?'legacy':'drawn');if(m==='photo'&&p.avPhoto)return'photo';if(m==='ai'&&p.avAI)return'ai';if(m==='legacy')return'legacy';return'drawn'}
+const AV_STYLES=[{id:'fashion',n:'Fashion illustration'},{id:'soft3d',n:'Soft 3D'},{id:'cute',n:'Cute cartoon'}];
+function styleName(id){return (AV_STYLES.find(s=>s.id===id)||AV_STYLES[0]).n}
+function curStyle(){const s=(S.profile||{}).avStyle;return AV_STYLES.some(x=>x.id===s)?s:'fashion'}
+function avKind(){const p=S.profile||{};
+ if(p.avAI&&p.avMode!=='photo')return'ai';
+ if(p.avMode==='photo'&&p.avPhoto)return'photo';
+ if(p.avAI)return'ai';
+ if(p.avPhoto)return'photo';
+ if(p.avMode==='legacy'&&p.photo)return'legacy';
+ return'drawn'}
 function avatarBody(where){const k=avKind(),p=S.profile;const src=k==='photo'?p.avPhoto:k==='ai'?p.avAI:k==='legacy'?p.photo:'';
  if(!src)return where==='swipe'?`<div class="swbody">${avatarSVG(p.skin)}</div>`:avatarSVG(p.skin);
  return where==='swipe'?`<img src="${src}" class="swbody" alt="" draggable="false">`:`<img src="${src}" class="av" alt="" style="object-fit:contain">`}
@@ -921,8 +930,6 @@ function alignSheet(){const d=avDraft;openSheet(`<div class="row sp"><h2 style="
   if(pts.length>=2){const dd=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);if(!g.d0){g.d0=dd;g.t={...d.t}}const ns=g.t.s*dd/g.d0,iw=img.naturalWidth,ih=img.naturalHeight;d.t.s=ns;d.t.x=g.t.x+iw*(g.t.s-ns)/2;d.t.y=g.t.y+ih*(g.t.s-ns)/2;$('#al_s').value=Math.round(ns/base*100)}
   else{d.t.x=g.t.x+(pts[0].x-g.p[0].x)/k;d.t.y=g.t.y+(pts[0].y-g.p[0].y)/k}fit()};
  box.onpointerup=box.onpointercancel=e=>{P.delete(e.pointerId);g=P.size?{t:{...d.t},p:[...P.values()].map(q=>({...q})),d0:0}:null}}
-async function startAvatarFrom(src,kind){toast('Removing background on your phone…');let cut;try{cut=await makeCutout(src)}catch(e){cut=src}
- avDraft={cut,kind,orig:src,t:await autoAlign(cut)};alignSheet()}
 // Live camera with ghost overlay (falls back to file picker)
 let camStream=null,camFacing='environment';
 async function cameraSheet(){openSheet(`<div class="row sp"><h2 style="margin:0">Full-body photo</h2><button class="btn sm sec" data-act="pav_camclose">✕</button></div>
@@ -932,40 +939,83 @@ async function cameraSheet(){openSheet(`<div class="row sp"><h2 style="margin:0"
  try{camStream?.getTracks().forEach(t=>t.stop());camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:camFacing,height:{ideal:1920}},audio:false});const v=$('#pav_vid');v.srcObject=camStream;await v.play().catch(()=>{})}
  catch(e){closeCam();toast('Camera not available, pick a photo instead');$('#pav_file')?.click()}}
 function closeCam(){camStream?.getTracks().forEach(t=>t.stop());camStream=null}
-async function shoot(){const v=$('#pav_vid');if(!v||!v.videoWidth)return toast('Camera not ready');const c=document.createElement('canvas');const ar=100/220;let w=v.videoWidth,h=v.videoHeight,cw=Math.min(w,h*ar),ch=cw/ar;c.width=Math.round(cw);c.height=Math.round(ch);c.getContext('2d').drawImage(v,(w-cw)/2,(h-ch)/2,cw,ch,0,0,cw,ch);closeCam();const src=scale(c,1100).toDataURL('image/jpeg',.9);await startAvatarFrom(src,'photo')}
-async function stylize(){const base=workerBase();if(!base)return toast('Set the Worker URL in Me first');const p=S.profile;const src=p.avPhoto||p.photo;if(!src)return toast('Make a Photo avatar first');
- if(!confirm('Send your photo to your try-on Worker → fal.ai (FLUX Kontext) to draw an illustrated avatar? Cost ≈ $0.025.'))return;
- const msg=$('#pav_msg');if(msg)msg.textContent='Styling… usually 10–30 seconds.';
- try{const im=await loadImg(src);const c=scale(im,1000,'image/jpeg');const person=c.toDataURL('image/jpeg',.88);// ~0.45 MP → billed as 1 MP
-  const ctrl=new AbortController();const tm=setTimeout(()=>ctrl.abort(),120000);const r=await fetch(base+'/stylize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({person}),signal:ctrl.signal});clearTimeout(tm);
+async function shoot(){const v=$('#pav_vid');if(!v||!v.videoWidth)return toast('Camera not ready');const c=document.createElement('canvas');const ar=100/220;let w=v.videoWidth,h=v.videoHeight,cw=Math.min(w,h*ar),ch=cw/ar;c.width=Math.round(cw);c.height=Math.round(ch);c.getContext('2d').drawImage(v,(w-cw)/2,(h-ch)/2,cw,ch,0,0,cw,ch);closeCam();const src=scale(c,1100).toDataURL('image/jpeg',.9);await ingestBodyPhoto(src)}
+function portraitForStylize(im){const W=576,H=1344;// 9:21, under 0.8 MP
+ const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');x.fillStyle='#f4f1ea';x.fillRect(0,0,W,H);
+ const iw=im.naturalWidth||im.width,ih=im.naturalHeight||im.height;const k=Math.min(W/iw,H/ih);const w=iw*k,h=ih*k;x.drawImage(im,(W-w)/2,(H-h)/2,w,h);return c}
+async function ingestBodyPhoto(src){toast('Saving your photo…');const p=S.profile;p.avSrc=src;if(!p.photo)p.photo=src;
+ try{const cut=await makeCutout(src);const t=await autoAlign(cut);p.avCut=cut;p.avT=t;p.avPhoto=await renderAligned(cut,t)}catch(e){p.avPhoto=src}
+ if(!p.avAI)p.avMode='photo';await kvSet('profile',p);toast('Photo saved. Pick a style, then make your illustrated avatar.');return render()}
+let _avConsented=false;
+async function stylize(){const base=workerBase();if(!base)return toast('Set the Worker URL in Me first');const p=S.profile;const src=p.avSrc||p.avPhoto||p.photo;if(!src)return toast('Take or upload a full-body photo first');
+ const style=curStyle();const consent=$('#pav_consent');if(!_avConsented&&consent&&!consent.checked)return toast('Check the box to consent to sending your photo');
+ if(!confirm('Send this full-body photo to your Worker, then to fal.ai, to make an illustrated avatar? Cost is about 2.5¢. The photo is used only to process this request.'))return;
+ _avConsented=true;
+ const msg=$('#pav_msg');if(msg)msg.textContent='Illustrating… usually 10–30 seconds. About 2.5¢.';
+ document.querySelectorAll('[data-act="pav_ai"]').forEach(b=>b.disabled=true);
+ try{const im=await loadImg(src);const person=portraitForStylize(im).toDataURL('image/jpeg',.88);
+  const ctrl=new AbortController();const tm=setTimeout(()=>ctrl.abort(),120000);const r=await fetch(base+'/stylize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({person,style}),signal:ctrl.signal});clearTimeout(tm);
   const j=await r.json().catch(()=>({}));if(!r.ok||!j.imageUrl)throw new Error(j.error||('Failed ('+r.status+')'));
-  const data=await urlToDataUrl(j.imageUrl);await startAvatarFrom(data,'ai')}catch(e){if(msg)msg.textContent='';toast('Stylize failed: '+(e.message||e))}}
-function avatarCard(){const p=S.profile,k=avKind(),m=p.avMode||'drawn';const opt=(v,l,ok)=>`<button class="chip ${m===v?'on':''}" data-act="pav_mode" data-k="${v}" ${ok?'':'disabled'}>${l}</button>`;
- const prev=k==='drawn'?avatarSVG(p.skin):`<img src="${k==='photo'?p.avPhoto:k==='ai'?p.avAI:p.photo}" style="width:100%;height:100%;object-fit:contain">`;
- return `<div class="card"><div class="row sp"><b>My avatar</b><span class="badge">${k==='drawn'?'Drawn':k==='photo'?'Photo':k==='ai'?'AI-styled':'Body photo'}</span></div>
- <div class="chips" style="margin-top:8px">${opt('drawn','Drawn',1)}${opt('photo','Photo',!!p.avPhoto)}${opt('ai','AI-styled',!!p.avAI)}</div>
- <p class="mut" id="pav_hlabel" style="text-align:center;margin:6px 0 0">${fmtHeight(heightIn(p))}${k==='drawn'?'':' · height is a label on photo avatars'}</p>
+  const data=await urlToDataUrl(j.imageUrl);await ingestStylizeResult(data,j.style||style)}catch(e){if(msg)msg.textContent='';toast('Illustration failed: '+(e.message||e))}
+ finally{document.querySelectorAll('[data-act="pav_ai"]').forEach(b=>b.disabled=false)}}
+async function ingestStylizeResult(src,style){toast('Removing background on your phone…');let cut;try{cut=await makeCutout(src)}catch(e){cut=src}
+ const t=await autoAlign(cut);const out=await renderAligned(cut,t);
+ const item={id:uid(),style,src:out,cut,t,at:Date.now()};
+ const gal=(Array.isArray(S.profile.avGallery)?S.profile.avGallery.slice():[]);gal.unshift(item);S.profile.avGallery=gal.slice(0,6);S.profile.avPick=item.id;S.profile.avStyle=style;
+ await kvSet('profile',S.profile);render();pickSheet()}
+function pickSheet(){const p=S.profile,gal=p.avGallery||[];const pick=p.avPick||(gal[0]&&gal[0].id);const cur=gal.find(g=>g.id===pick)||gal[0];if(!cur)return;
+ openSheet(`<div class="row sp"><h2 style="margin:0">Pick your illustrated avatar</h2><button class="btn sm sec" data-act="close">✕</button></div>
+ <p class="mut">${esc(styleName(cur.style))} · background already removed and lined up for clothes. Generate again to add another (~2.5¢).</p>
+ <div class="avprev" style="margin:8px auto;height:280px;width:127px"><img src="${cur.src}" class="av" alt="" style="width:100%;height:100%;object-fit:contain"></div>
+ <div class="avgallery">${gal.map(g=>`<button type="button" class="${g.id===cur.id?'on':''}" data-act="pav_pick" data-k="${g.id}"><img src="${g.src}" alt="${esc(styleName(g.style))}"></button>`).join('')}</div>
+ <div class="row" style="margin-top:8px"><button class="btn" data-act="pav_use">Use this avatar</button><button class="btn sec" data-act="pav_ai">Generate again (~2.5¢)</button><button class="btn sec" data-act="pav_realign_pick">Line up</button></div>
+ <p class="mut" id="pav_msg"></p>`)}
+function galleryHtml(p){const gal=p.avGallery||[];if(!gal.length)return'';const pick=p.avPick||(p.avAI&&gal.find(g=>g.src===p.avAI)?.id)||gal[0].id;
+ return `<p class="mut" style="margin:10px 0 4px">Your illustrations — tap one, then use it as your avatar. Generate again to add another.</p>
+ <div class="avgallery">${gal.map(g=>`<button type="button" class="${g.id===pick?'on':''}" data-act="pav_pick" data-k="${g.id}"><img src="${g.src}" alt="${esc(styleName(g.style))}"></button>`).join('')}</div>
+ <div class="row"><button class="btn sm" data-act="pav_use" ${gal.some(g=>g.id===pick)?'':'disabled'}>Use this avatar</button><button class="btn sm sec" data-act="pav_picks">Compare</button></div>`}
+function avatarCard(){const p=S.profile,k=avKind(),style=curStyle();const srcPhoto=p.avSrc||p.avPhoto||p.photo;
+ const badge=k==='ai'?'Illustrated':k==='photo'?'Photo ready':k==='legacy'?'Body photo':'Drawn fallback';
+ const prev=k==='drawn'?avatarSVG(p.skin):`<img src="${k==='photo'?p.avPhoto:k==='ai'?p.avAI:p.photo}" style="width:100%;height:100%;object-fit:contain" alt="">`;
+ return `<div class="card" id="avcard"><div class="row sp"><b>My avatar</b><span class="badge">${badge}</span></div>
+ <p class="mut" id="pav_hlabel" style="text-align:center;margin:6px 0 0">${fmtHeight(heightIn(p))}${k==='drawn'?' · temporary drawn figure until you make an illustrated avatar':' · clothes line up on this standing pose'}</p>
  <div class="row" style="flex-wrap:nowrap;margin-top:8px;align-items:flex-start"><div class="avprev" style="margin:0;flex:none">${prev}</div>
- <div style="flex:1"><p class="mut" style="margin-top:0">Poses work with the Drawn avatar only. Photo and AI avatars stay still, and clothes line up on the dashed guides.</p>
- <button class="btn sm full" data-act="pav_cam">📷 Snap with outline</button><label class="btn sm sec full" style="text-align:center;margin-top:6px">🖼 Upload full-body photo<input type="file" accept="image/*" id="pav_file" hidden></label>
- ${p.avPhoto||p.avAI?'<button class="btn sm sec full" style="margin-top:6px" data-act="pav_realign">Re-align</button>':''}
- <button class="btn sm sec full" style="margin-top:6px" data-act="pav_ai" ${p.avPhoto||p.photo?'':'disabled'}>✨ Stylize with AI (~$0.025)</button>${p.avPhoto||p.avAI?'<button class="btn sm sec full" style="margin-top:6px" data-act="pav_del">Delete photo avatars</button>':''}<p class="mut" id="pav_msg"></p></div></div>
- <p class="mut" style="font-size:12px"><b>Privacy:</b> Your photos and avatar stay on this device. Background removal runs on your phone. Only if you tap “Stylize with AI” is the photo sent to your Worker and fal.ai to be processed.</p></div>`}
+ <div style="flex:1">
+  <p style="margin:0 0 6px"><b>1. Full-body photo</b></p>
+  ${srcPhoto?`<div class="row" style="flex-wrap:nowrap;margin-bottom:6px"><img src="${srcPhoto}" class="avsrc" alt="Your photo">${p.avPhoto&&p.avPhoto!==srcPhoto?`<img src="${p.avPhoto}" class="avsrc" alt="Cutout">`:''}</div>`:'<p class="mut" style="margin-top:0">Take or upload a full-body photo, standing straight against a plain background.</p>'}
+  <button class="btn sm full" data-act="pav_cam">📷 Take full-body photo</button>
+  <label class="btn sm sec full" style="text-align:center;margin-top:6px">🖼 Upload full-body photo<input type="file" accept="image/*" id="pav_file" hidden></label>
+ </div></div>
+ <p style="margin:14px 0 6px"><b>2. Illustration style</b></p>
+ <div class="chips wrap">${AV_STYLES.map(s=>`<button class="chip ${style===s.id?'on':''}" data-act="pav_style" data-k="${s.id}">${s.n}${s.id==='fashion'?' · default':''}</button>`).join('')}</div>
+ <p style="margin:14px 0 6px"><b>3. Make my illustrated avatar</b></p>
+ <label class="consent"><input type="checkbox" id="pav_consent"><span>I agree to send this photo to fal.ai through my Worker to create an illustration. Cost is about <b>2.5¢</b> per image. The photo is used only to process this request.</span></label>
+ <button class="btn full" data-act="pav_ai" ${srcPhoto?'':'disabled'}>✨ Make my illustrated avatar (~2.5¢)</button>
+ ${galleryHtml(p)}
+ ${p.avPhoto||p.avAI?`<div class="row" style="margin-top:10px">${p.avAI||p.avPhoto?'<button class="btn sm sec" data-act="pav_realign">Re-align active avatar</button>':''}${k==='ai'&&p.avPhoto?'<button class="btn sm sec" data-act="pav_usephoto">Use my photo instead</button>':''}${k==='photo'&&p.avAI?'<button class="btn sm sec" data-act="pav_useai">Use illustrated avatar</button>':''}<button class="btn sm sec" data-act="pav_del">Delete avatars</button></div>`:''}
+ <p class="mut" id="pav_msg"></p>
+ <p class="mut" style="font-size:12px"><b>Privacy:</b> Photos and avatars stay on this device. Background removal runs on your phone. Only when you tap “Make my illustrated avatar” (and consent) is the photo sent to your Worker and fal.ai. The drawn figure is used only if you have no photo or illustrated avatar yet.</p></div>`}
 const _vMe1=vMe;vMe=function(){const h=_vMe1();const i=h.indexOf('</h2>');return i>=0?h.slice(0,i+5)+avatarCard()+h.slice(i+5):avatarCard()+h};
 document.addEventListener('click',async e=>{const t=e.target.closest('[data-act^="pav_"]');if(!t)return;e.stopImmediatePropagation();const A=t.dataset.act,p=S.profile;
- if(A==='pav_mode'){p.avMode=t.dataset.k;await kvSet('profile',p);return render()}
+ if(A==='pav_style'){p.avStyle=t.dataset.k;await kvSet('profile',p);return render()}
  if(A==='pav_cam'){if(!navigator.mediaDevices?.getUserMedia){return $('#pav_file')?.click()}return cameraSheet()}
  if(A==='pav_camclose'){closeCam();return closeSheet()}
  if(A==='pav_flip'){camFacing=camFacing==='environment'?'user':'environment';return cameraSheet()}
  if(A==='pav_shoot')return shoot();
  if(A==='pav_timer'){let n=3;t.disabled=true;const iv=setInterval(()=>{t.textContent=n?n+'…':'📸';if(n--<=0){clearInterval(iv);shoot()}},1000);return}
  if(A==='pav_auto'){avDraft.t=await autoAlign(avDraft.cut);return alignSheet()}
- if(A==='pav_save'){const out=await renderAligned(avDraft.cut,avDraft.t);if(avDraft.kind==='ai'){p.avAI=out;p.avAIcut=avDraft.cut;p.avAIt=avDraft.t;p.avMode='ai'}else{p.avPhoto=out;p.avCut=avDraft.cut;p.avT=avDraft.t;p.avMode='photo'}await kvSet('profile',p);avDraft=null;closeSheet();toast('Avatar saved on this device');return render()}
+ if(A==='pav_save'){const out=await renderAligned(avDraft.cut,avDraft.t);if(avDraft.kind==='ai'){p.avAI=out;p.avAIcut=avDraft.cut;p.avAIt=avDraft.t;p.avMode='ai';const g=(p.avGallery||[]).find(x=>x.id===p.avPick);if(g){g.src=out;g.cut=avDraft.cut;g.t=avDraft.t}}else{p.avPhoto=out;p.avCut=avDraft.cut;p.avT=avDraft.t;if(!p.avAI)p.avMode='photo'}await kvSet('profile',p);avDraft=null;closeSheet();toast('Avatar saved on this device');return render()}
  if(A==='pav_realign'){const ai=avKind()==='ai';const cut=ai?p.avAIcut:p.avCut;if(!cut)return;avDraft={cut,kind:ai?'ai':'photo',t:{...(ai?p.avAIt:p.avT)}};return alignSheet()}
+ if(A==='pav_realign_pick'){const g=(p.avGallery||[]).find(x=>x.id===p.avPick)||(p.avGallery||[])[0];if(!g)return;avDraft={cut:g.cut,kind:'ai',t:{...g.t}};return alignSheet()}
+ if(A==='pav_pick'){p.avPick=t.dataset.k;await kvSet('profile',p);if($('#sheet')&&!$('#sheet').classList.contains('hidden')&&$('#sheetIn h2')&&/illustrated avatar/i.test($('#sheetIn h2').textContent||''))return pickSheet();return render()}
+ if(A==='pav_picks')return pickSheet();
+ if(A==='pav_use'){const g=(p.avGallery||[]).find(x=>x.id===p.avPick)||(p.avGallery||[])[0];if(!g)return toast('Pick an illustration first');p.avAI=g.src;p.avAIcut=g.cut;p.avAIt=g.t;p.avStyle=g.style;p.avMode='ai';await kvSet('profile',p);closeSheet();toast('Illustrated avatar is now active');return render()}
+ if(A==='pav_usephoto'){if(!p.avPhoto)return;p.avMode='photo';await kvSet('profile',p);return render()}
+ if(A==='pav_useai'){if(!p.avAI)return;p.avMode='ai';await kvSet('profile',p);return render()}
  if(A==='pav_ai')return stylize();
- if(A==='pav_del'){if(!confirm('Delete your photo and AI avatars from this device?'))return;['avPhoto','avCut','avT','avAI','avAIcut','avAIt'].forEach(k=>delete p[k]);p.avMode='drawn';await kvSet('profile',p);return render()}
+ if(A==='pav_del'){if(!confirm('Delete your photo and illustrated avatars from this device? The drawn figure will be used until you add a new photo.'))return;['avPhoto','avCut','avT','avAI','avAIcut','avAIt','avSrc','avGallery','avPick'].forEach(k=>delete p[k]);p.avMode='drawn';await kvSet('profile',p);return render()}
 },true);
-document.addEventListener('change',async e=>{if(e.target.id!=='pav_file')return;e.stopImmediatePropagation();const f=e.target.files[0];if(!f)return;const im=await fileToImg(f);await startAvatarFrom(scale(im,1100).toDataURL('image/jpeg',.9),'photo')},true);
+document.addEventListener('change',async e=>{if(e.target.id!=='pav_file')return;e.stopImmediatePropagation();const f=e.target.files[0];if(!f)return;const im=await fileToImg(f);await ingestBodyPhoto(scale(im,1100).toDataURL('image/jpeg',.9))},true);
 
 
 /* ===== Household closet sync (opt-in, Cloudflare Worker KV) ===== */

@@ -11,7 +11,7 @@ async function kvGet(k,d){const q=await new Promise(r=>{const x=tx('kv').get(k);
 const kvSet=(k,v)=>put('kv',{id:k,v});
 
 /* ===== State ===== */
-const S={items:[],outfits:[],plans:{},history:[],profile:{name:'',photo:'',skin:'#e8b894'},settings:{dark:matchMedia('(prefers-color-scheme: dark)').matches,units:'F',city:'',lat:null,lon:null,place:'',tryonWorker:''},tab:'today',mood:'Chill',wx:null,q:'',cat:'All',sort:'new',laundry:'All',dress:[],calMonth:null,dismissed:[]};
+const S={items:[],outfits:[],plans:{},history:[],profile:{name:'',photo:'',skin:'#e8b894',heightIn:66,measUnit:'in'},settings:{dark:matchMedia('(prefers-color-scheme: dark)').matches,units:'F',city:'',lat:null,lon:null,place:'',tryonWorker:''},tab:'today',mood:'Chill',wx:null,q:'',cat:'All',sort:'new',laundry:'All',dress:[],calMonth:null,dismissed:[]};
 const CATS=['Tops','Bottoms','Dresses','Outerwear','Shoes','Accessories'];
 const SEASONS=['Spring','Summer','Fall','Winter'];
 const OCC=['Casual','Work','Date','Dinner','Party','Workout','Formal','Lounge','Sleep'];
@@ -35,9 +35,46 @@ const I={today:'<path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h
 const icon=n=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
 const TABS=[['today','Today'],['closet','Closet'],['dress','Dress Me'],['plan','Plan'],['alerts','Alerts'],['me','Me']];
 
-/* ===== Avatar (stylized SVG) ===== */
+/* ===== Avatar (stylized SVG, realistic adult proportions) ===== */
 function shadeHex(h,a){h=String(h||'#e8b894').replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16)||0xe8b894;const f=v=>Math.max(0,Math.min(255,Math.round(a<0?v*(1+a):v+(255-v)*a)));return '#'+[n>>16,(n>>8)&255,n&255].map(f).map(v=>v.toString(16).padStart(2,'0')).join('')}
 const AV_HAIR=['long','bob','bun','pixie','curly','ponytail'],AV_BODY=['slim','average','curvy','athletic'],AV_HC={Black:'#1c1512',Brown:'#4a2f1f',Auburn:'#7a3420',Blonde:'#d8b26e',Red:'#a0381e',Gray:'#9a958f',Pink:'#e58fb5'};
+const AV_H_DEFAULT=66,AV_H_MIN=48,AV_H_MAX=84;
+const AV_DEF_MEAS={bust:36,waist:28,hips:38};
+function heightIn(p){const v=+(p&&p.heightIn);return Number.isFinite(v)&&v>0?Math.max(AV_H_MIN,Math.min(AV_H_MAX,v)):AV_H_DEFAULT}
+function fmtHeight(ins){ins=heightIn({heightIn:ins});const x=Math.round(ins*2)/2;let ft=Math.floor(x/12),inch=Math.round((x-ft*12)*2)/2;if(inch>=12){ft++;inch=0}return ft+"'"+(inch%1?inch:inch|0)+'"'}
+function inToCm(ins){return Math.round(ins*2.54*10)/10}
+function cmToIn(cm){return Math.round(cm/2.54*10)/10}
+function parseHeightInput(raw){const s=String(raw||'').trim().toLowerCase().replace(/[″”]/g,'"').replace(/[′’]/g,"'");if(!s)return null;
+ let m=s.match(/^([0-9]+(?:\.[0-9]+)?)\s*cm$/);if(m)return +m[1]/2.54;
+ m=s.match(/^([0-9]+(?:\.[0-9]+)?)\s*m$/);if(m)return +m[1]*100/2.54;
+ m=s.match(/^([0-9]+)\s*(?:'|ft|feet)\s*([0-9]+(?:\.[0-9]+)?)?\s*(?:"|in|inch|inches)?$/);if(m)return (+m[1])*12+(+m[2]||0);
+ m=s.match(/^([0-9]+(?:\.[0-9]+)?)\s*(?:in|inch|inches|"|″)$/);if(m)return +m[1];
+ const n=parseFloat(s);if(!Number.isFinite(n))return null;if(n>=100)return n/2.54;if(n<=8)return n*12;return n}
+function parseMeas(raw,unit){const s=String(raw||'').trim().toLowerCase();if(!s)return'';
+ let m=s.match(/^([0-9]+(?:\.[0-9]+)?)\s*cm$/);if(m)return Math.round(+m[1]/2.54*10)/10;
+ m=s.match(/^([0-9]+(?:\.[0-9]+)?)\s*(?:in|inch|inches|")?$/);if(!m)return'';
+ let n=+m[1];if(unit==='cm'&&!/in|inch|"/.test(s)&&n>15)n=n/2.54;return Math.round(n*10)/10}
+function hasMeas(p,k){const v=p&&p[k];return v!=null&&v!==''&&Number.isFinite(+v)&&+v>0}
+function avLayout(p){p=p||(typeof S!=='undefined'&&S.profile)||{};
+ const inches=heightIn(p);
+ const body=AV_BODY.includes(p.body)?p.body:'average';
+ const crown=8,feet=208,H=feet-crown,headH=H/7.5;
+ let legFrac=Math.max(0.45,Math.min(0.52,0.48+(inches-66)*0.0035));
+ if(hasMeas(p,'inseam')){const want=+p.inseam*(H/inches)/H;legFrac=Math.max(0.40,Math.min(0.56,want))}
+ const chin=crown+headH,crotch=feet-H*legFrac,shoulder=chin+headH*0.32,bust=crown+headH*2.02;
+ const waist=crown+headH*3.05,hip=crotch-headH*0.22,knee=crotch+(feet-crotch)*0.48,ankle=feet-headH*0.22,neck=(chin+shoulder)/2;
+ const unit=H/inches;
+ const shape={slim:{sh:.92,bu:.90,wa:.86,hi:.90},average:{sh:1,bu:1,wa:1,hi:1},curvy:{sh:.98,bu:1.08,wa:.90,hi:1.16},athletic:{sh:1.12,bu:1.04,wa:1.10,hi:1.00}}[body];
+ const bustC=hasMeas(p,'bust')?+p.bust:AV_DEF_MEAS.bust,waistC=hasMeas(p,'waist')?+p.waist:AV_DEF_MEAS.waist,hipC=hasMeas(p,'hips')?+p.hips:AV_DEF_MEAS.hips;
+ const buMul=hasMeas(p,'bust')?1:shape.bu,waMul=hasMeas(p,'waist')?1:shape.wa,hiMul=hasMeas(p,'hips')?1:shape.hi;
+ const k=0.138;
+ const sh=6.2*unit*shape.sh,bu=bustC*k*unit*buMul,wa=waistC*k*unit*waMul,hi=hipC*k*unit*hiMul;
+ let foot=3.6;if(p.shoe){const sz=parseFloat(String(p.shoe).replace(/[^0-9.]/g,''));if(sz>0)foot=Math.max(2.8,Math.min(5.2,3.6+(sz-8)*0.12))}
+ return {inches,crown,chin,neck,shoulder,bust,waist,hip,crotch,knee,ankle,feet,headH,sh,bu,wa,hi,foot,unit,body,H}}
+function avGuide(p){const L=avLayout(p);return{head:+L.crown.toFixed(1),shoulder:+L.shoulder.toFixed(1),hip:+L.hip.toFixed(1),feet:L.feet}}
+function swAnchors(p){const L=avLayout(p||(typeof S!=='undefined'&&S.profile));const y=v=>+(v/220*100).toFixed(2);
+ return{t:{x:50,y:y((L.bust+L.waist)/2),s:42},b:{x:50,y:y((L.hip+L.knee)/2),s:28},s:{x:50,y:y((L.ankle+L.feet)/2+1),s:24},Dresses:{x:50,y:y((L.shoulder+L.crotch)/2),s:44},Outerwear:{x:50,y:y((L.shoulder+L.waist)/2),s:54}}}
+
 const POSES={casual:{n:'Casual',la:5,lf:-3,ra:9,rf:-14,ll:0,lk:0,rl:5,rk:6,head:3,fig:-1},
  gym:{n:'Gym',la:40,lf:-100,ra:40,rf:-100,ll:7,lk:0,rl:7,rk:0,head:0,fig:0},
  dinner:{n:'Dinner',la:38,lf:-102,ra:3,rf:-4,ll:-5.5,lk:1,rl:2.5,rk:-1,head:-4,fig:0},
@@ -51,53 +88,115 @@ function curIds(){return S.tab==='dress'&&S.dressMode==='swipe'?swIds():S.dress.
 function curPose(){const o=S.poseOverride;return o&&POSES[o]?o:poseFor(curIds())}
 function poseDelta(z,p){if(avKind()!=='drawn')return {};return (POSE_D[p||curPose()]||{})[z]||{}}
 function segT(k,p){const P=POSES[p]||POSES.casual,v=P[k]||0;return `rotate(${k[0]==='r'&&k!=='rk'&&k!=='rf'&&k!=='rl'&&k!=='ra'?v:(k[0]==='r'?-v:v)}deg)`}
-function avatarSVG(skin){const P=S.profile||{},sk=skin||'#e8b894',hc=AV_HC[P.hairColor]||P.hairColor||AV_HC.Brown,hs=AV_HAIR.includes(P.hair)?P.hair:'long';const pose=S.lastPose||'casual';
- const B={slim:[14,8.5,12.5],average:[15.5,10,14.5],curvy:[15.5,9.5,17.5],athletic:[17.5,11.5,14]}[AV_BODY.includes(P.body)?P.body:'average'];const[sh,w,h]=B,c=50;
+function avatarSVG(skin){const P=S.profile||{},L=avLayout(P),sk=skin||'#e8b894',hc=AV_HC[P.hairColor]||P.hairColor||AV_HC.Brown,hs=AV_HAIR.includes(P.hair)?P.hair:'long';const pose=S.lastPose||'casual';
+ const c=50,{sh,bu,wa,hi,crown,chin,neck,shoulder,bust,waist,hip,crotch,knee,ankle,feet,headH,foot}=L;
  const d=shadeHex(sk,-.22),l=shadeHex(sk,.18),hd=shadeHex(hc,-.3),hl=shadeHex(hc,.25),uw=shadeHex(sk,.55),uwd=shadeHex(sk,.3),lip='#c46a72';
- const g=`av${sk.replace('#','')}${hc.replace('#','')}`,L=c-sh,R=c+sh,F=`url(#s${g})`;
+ const g=`av${sk.replace('#','')}${hc.replace('#','')}${Math.round(L.inches)}${P.body||'av'}`,Ls=c-sh,Rs=c+sh,F=`url(#s${g})`;
  const seg=(k,ox,oy,inner)=>`<g class="seg" data-seg="${k}" style="transform-origin:${ox}px ${oy}px;transform:${segT(k,pose)}">${inner}</g>`;
- const torso=`M${c-4},33 C${c-4},37 ${L+3},38 ${L},41 C${L-1.5},44 ${L-1},50 ${L+2},55 C${c-w-1},70 ${c-w},84 ${c-w},92 C${c-w-1},98 ${c-h},104 ${c-h},112 C${c-h+1},117 ${c-4},120 ${c},120 C${c+4},120 ${c+h-1},117 ${c+h},112 C${c+h},104 ${c+w+1},98 ${c+w},92 C${c+w},84 ${c+w+1},70 ${R-2},55 C${R+1},50 ${R+1.5},44 ${R},41 C${R-3},38 ${c+4},37 ${c+4},33 Z`;
- const arm=s=>{const x=c+s*sh,k=s<0?'l':'r';const up=`M${x-s*0.5},41.5 C${x+s*4},45 ${x+s*5},60 ${x+s*5.6},77 L${x+s*1.7},77 C${x+s*1.2},66 ${x-s*.5},58 ${x-s*2.5},53 Z`;
-  const fo=`M${x+s*5.6},75 C${x+s*6.2},88 ${x+s*7.5},100 ${x+s*8.5},113 L${x+s*5.5},114 C${x+s*4.2},102 ${x+s*2.5},88 ${x+s*1.7},75 Z`;const hx=c+s*(sh+7);
-  return seg(k+'a',x+s*.5,44,`<path d="${up}"/>`+seg(k+'f',x+s*3.65,76,`<path d="${fo}"/><ellipse cx="${hx}" cy="118" rx="2.6" ry="4.6" transform="rotate(${-s*10} ${hx} 118)"/><circle cx="${x+s*3.65}" cy="76" r="2.1" stroke="none"/>`))};
- const leg=s=>{const k=s<0?'l':'r',X=v=>c+s*v;const up=`M${X(h)},106 C${X(h)},126 ${X(10)},140 ${X(8.5)},156 L${X(2.5)},156 C${X(2)},140 ${X(1.2)},128 ${X(0)},119 L${X(0)},106 Z`;
-  const lo=`M${X(8.5)},155 C${X(8)},170 ${X(7)},188 ${X(5.5)},201 L${X(2)},201 C${X(2.5)},186 ${X(2)},168 ${X(2.5)},155 Z`;const ft=`M${X(5.5)},201 C${X(9)},202 ${X(10)},205 ${X(7)},206 L${X(2)},206 C${X(1.6)},204 ${X(1.8)},202 ${X(2)},201 Z`;
-  return seg(k+'l',X(5.5),110,`<path d="${up}"/>`+seg(k+'k',X(5.5),156,`<path d="${lo}"/><path d="${ft}"/><ellipse cx="${X(5.5)}" cy="156" rx="3.2" ry="2.4" stroke="none"/>`))};
- const back={long:`<path d="M${c-11},16 C${c-15},40 ${c-14},56 ${c-12},62 L${c+12},62 C${c+14},56 ${c+15},40 ${c+11},16 Z" fill="url(#h${g})"/>`,bob:`<path d="M${c-11.5},16 C${c-13},28 ${c-12.5},34 ${c-10},37 L${c+10},37 C${c+12.5},34 ${c+13},28 ${c+11.5},16 Z" fill="url(#h${g})"/>`,bun:`<circle cx="${c}" cy="5" r="6" fill="url(#h${g})"/>`,pixie:'',curly:`<g fill="url(#h${g})">${[[-11,14],[-13,22],[-13,30],[-11,37],[11,14],[13,22],[13,30],[11,37],[-6,6],[0,4],[6,6]].map(([x,y])=>`<circle cx="${c+x}" cy="${y}" r="5.5"/>`).join('')}</g>`,ponytail:`<path d="M${c+6},8 C${c+18},6 ${c+19},26 ${c+15},44 C${c+14},34 ${c+12},22 ${c+7},14 Z" fill="url(#h${g})"/>`}[hs];
- const front={long:`M${c-10.5},20 C${c-11},8 ${c-4},5 ${c},5 C${c+6},5 ${c+11.5},9 ${c+10.5},22 C${c+8},13 ${c+2},11 ${c-3},13 C${c-6},14 ${c-9},17 ${c-10.5},20 Z`,bob:`M${c-11},22 C${c-12},8 ${c-4},5 ${c},5 C${c+5},5 ${c+12},8 ${c+11},22 C${c+9},15 ${c+4},13 ${c},14 C${c-5},13 ${c-9},15 ${c-11},22 Z`,bun:`M${c-10.2},19 C${c-10.5},9 ${c-4},6.5 ${c},6.5 C${c+4},6.5 ${c+10.5},9 ${c+10.2},19 C${c+7},12 ${c-7},12 ${c-10.2},19 Z`,pixie:`M${c-10.4},20 C${c-11},8 ${c-3},5 ${c+1},5.5 C${c+8},6 ${c+11},11 ${c+10.4},18 C${c+6},14 ${c+2},11 ${c-4},14 C${c-7},15 ${c-9},17 ${c-10.4},20 Z`,curly:`M${c-10.5},20 C${c-11},8 ${c-4},5 ${c},5 C${c+4},5 ${c+11},8 ${c+10.5},20 C${c+7},12 ${c-7},12 ${c-10.5},20 Z`,ponytail:`M${c-10.2},19 C${c-10.5},9 ${c-4},6.5 ${c},6.5 C${c+4},6.5 ${c+10.5},9 ${c+10.2},19 C${c+7},12 ${c-7},12 ${c-10.2},19 Z`}[hs];
- const face=`<ellipse cx="${c}" cy="19.5" rx="9.6" ry="12.2" fill="url(#f${g})" stroke="${d}" stroke-width=".35"/>
- <path d="M${c-6.2},16.3 q2.2,-1.4 4.3,-.2" stroke="${hd}" stroke-width=".8" fill="none" stroke-linecap="round"/><path d="M${c+1.9},16.1 q2.1,-1.2 4.3,.2" stroke="${hd}" stroke-width=".8" fill="none" stroke-linecap="round"/>
- <ellipse cx="${c-3.9}" cy="19.6" rx="1.5" ry="1" fill="#fff"/><ellipse cx="${c+3.9}" cy="19.6" rx="1.5" ry="1" fill="#fff"/><circle cx="${c-3.8}" cy="19.6" r=".85" fill="#2a1c15"/><circle cx="${c+4}" cy="19.6" r=".85" fill="#2a1c15"/>
- <path d="M${c-5.5},19 q1.6,-1.3 3.2,0M${c+2.3},19 q1.6,-1.3 3.2,0" stroke="#2a1c15" stroke-width=".45" fill="none"/><path d="M${c-.3},21 q-.9,2.6 .2,3.1 q.8,.2 1,-.2" stroke="${d}" stroke-width=".4" fill="none"/>
- <path d="M${c-2.6},27 q1.3,-.9 2.6,-.3 q1.3,-.6 2.6,.3 q-1.3,1.6 -2.6,1.5 q-1.3,.1 -2.6,-1.5 Z" fill="${lip}" opacity=".85"/>
- <ellipse cx="${c-6}" cy="24" rx="2" ry="1.1" fill="#e98a8a" opacity=".18"/><ellipse cx="${c+6}" cy="24" rx="2" ry="1.1" fill="#e98a8a" opacity=".18"/>
- <path d="${front}" fill="url(#h${g})"/>${hs==='bun'||hs==='ponytail'?`<path d="M${c-4},8 C${c-1},7 ${c+3},7.5 ${c+6},9" stroke="${hl}" stroke-width=".5" fill="none" opacity=".7"/>`:''}`;
+ const torso=`M${c-3.2},${chin+0.2} C${c-3.4},${neck-0.6} ${c-5.2},${neck+2} ${c-7.5},${shoulder-6}
+C${c-11},${shoulder-3.2} ${Ls+1.2},${shoulder-1.2} ${Ls},${shoulder+0.4}
+C${Ls-0.4},${shoulder+5} ${c-bu},${(shoulder+bust)/2} ${c-bu},${bust}
+C${c-bu-0.3},${(bust+waist)/2} ${c-wa},${waist-3} ${c-wa},${waist}
+C${c-wa},${(waist+hip)/2} ${c-hi},${hip-2} ${c-hi},${hip}
+C${c-hi+0.8},${(hip+crotch)/2} ${c-3.6},${crotch-1.5} ${c},${crotch}
+C${c+3.6},${crotch-1.5} ${c+hi-0.8},${(hip+crotch)/2} ${c+hi},${hip}
+C${c+hi},${hip-2} ${c+wa},${(waist+hip)/2} ${c+wa},${waist}
+C${c+wa},${waist-3} ${c+bu+0.3},${(bust+waist)/2} ${c+bu},${bust}
+C${c+bu},${(shoulder+bust)/2} ${Rs+0.4},${shoulder+5} ${Rs},${shoulder+0.4}
+C${Rs-1.2},${shoulder-1.2} ${c+11},${shoulder-3.2} ${c+7.5},${shoulder-6}
+C${c+5.2},${neck+2} ${c+3.4},${neck-0.6} ${c+3.2},${chin+0.2} Z`;
+ const arm=s=>{const x=c+s*sh,k=s<0?'l':'r';
+  const y0=shoulder+1.2,y1=waist-2,y2=hip+8;
+  const up=`M${x-s*0.6},${y0} C${x+s*4.2},${y0+6} ${x+s*5.2},${(y0+y1)/2} ${x+s*5.4},${y1} L${x+s*1.6},${y1} C${x+s*1.2},${(y0+y1)/2+4} ${x-s*0.4},${y0+10} ${x-s*2.2},${y0+8} Z`;
+  const fo=`M${x+s*5.4},${y1-1.5} C${x+s*6},${(y1+y2)/2} ${x+s*7.2},${y2-6} ${x+s*8},${y2} L${x+s*5},${y2+1} C${x+s*4},${y2-6} ${x+s*2.4},${(y1+y2)/2} ${x+s*1.6},${y1-1.5} Z`;
+  const hx=c+s*(sh+7.2);
+  return seg(k+'a',x+s*.4,y0+2,`<path d="${up}"/>`+seg(k+'f',x+s*3.5,y1,`<path d="${fo}"/><ellipse cx="${hx}" cy="${y2+4}" rx="2.6" ry="4.6" transform="rotate(${-s*10} ${hx} ${y2+4})"/><circle cx="${x+s*3.5}" cy="${y1}" r="2.1" stroke="none"/>`))};
+ const leg=s=>{const k=s<0?'l':'r',X=v=>c+s*v;
+  const hy=hip-2,ky=knee,ay=ankle,fy=feet-2;
+  const up=`M${X(hi*0.92)},${hy} C${X(hi*0.85)},${hy+(ky-hy)*0.45} ${X(8.4)},${ky-8} ${X(7.2)},${ky} L${X(2.4)},${ky} C${X(2)},${ky-10} ${X(1.2)},${hy+12} ${X(0.4)},${hy+4} L${X(0)},${hy} Z`;
+  const lo=`M${X(7.2)},${ky-1} C${X(6.8)},${(ky+ay)/2} ${X(5.8)},${ay-6} ${X(4.8)},${ay} L${X(1.8)},${ay} C${X(2.2)},${ay-8} ${X(2)},${(ky+ay)/2} ${X(2.4)},${ky-1} Z`;
+  const ft=`M${X(4.8)},${ay} C${X(4.8+foot)},${ay+1} ${X(4.8+foot+0.6)},${ay+4} ${X(6)},${fy} L${X(1.6)},${fy} C${X(1.4)},${ay+3} ${X(1.6)},${ay+1} ${X(1.8)},${ay} Z`;
+  return seg(k+'l',X(5.2),hy+2,`<path d="${up}"/>`+seg(k+'k',X(5.2),ky,`<path d="${lo}"/><path d="${ft}"/><ellipse cx="${X(5.2)}" cy="${ky}" rx="3.2" ry="2.4" stroke="none"/>`))};
+ // head-local remap from the original ~5–32 head box
+ const hy=y=>crown+(y-5)/26.7*headH;
+ const back={long:`<path d="M${c-11},${hy(16)} C${c-15},${hy(16)+24} ${c-14},${shoulder+14} ${c-12},${bust-2} L${c+12},${bust-2} C${c+14},${shoulder+14} ${c+15},${hy(16)+24} ${c+11},${hy(16)} Z" fill="url(#h${g})"/>`,
+  bob:`<path d="M${c-11.5},${hy(16)} C${c-13},${hy(16)+12} ${c-12.5},${chin+2} ${c-10},${chin+5} L${c+10},${chin+5} C${c+12.5},${chin+2} ${c+13},${hy(16)+12} ${c+11.5},${hy(16)} Z" fill="url(#h${g})"/>`,
+  bun:`<circle cx="${c}" cy="${crown-2}" r="${6*headH/26.7}" fill="url(#h${g})"/>`,pixie:'',
+  curly:`<g fill="url(#h${g})">${[[-11,14],[-13,22],[-13,30],[-11,37],[11,14],[13,22],[13,30],[11,37],[-6,6],[0,4],[6,6]].map(([x,y])=>`<circle cx="${c+x}" cy="${hy(y)}" r="${5.5*headH/26.7}"/>`).join('')}</g>`,
+  ponytail:`<path d="M${c+6},${hy(8)} C${c+18},${hy(6)} ${c+19},${hy(26)} ${c+15},${shoulder+6} C${c+14},${chin} ${c+12},${hy(22)} ${c+7},${hy(14)} Z" fill="url(#h${g})"/>`}[hs];
+ const front={long:`M${c-10.5},${hy(20)} C${c-11},${hy(8)} ${c-4},${hy(5)} ${c},${hy(5)} C${c+6},${hy(5)} ${c+11.5},${hy(9)} ${c+10.5},${hy(22)} C${c+8},${hy(13)} ${c+2},${hy(11)} ${c-3},${hy(13)} C${c-6},${hy(14)} ${c-9},${hy(17)} ${c-10.5},${hy(20)} Z`,
+  bob:`M${c-11},${hy(22)} C${c-12},${hy(8)} ${c-4},${hy(5)} ${c},${hy(5)} C${c+5},${hy(5)} ${c+12},${hy(8)} ${c+11},${hy(22)} C${c+9},${hy(15)} ${c+4},${hy(13)} ${c},${hy(14)} C${c-5},${hy(13)} ${c-9},${hy(15)} ${c-11},${hy(22)} Z`,
+  bun:`M${c-10.2},${hy(19)} C${c-10.5},${hy(9)} ${c-4},${hy(6.5)} ${c},${hy(6.5)} C${c+4},${hy(6.5)} ${c+10.5},${hy(9)} ${c+10.2},${hy(19)} C${c+7},${hy(12)} ${c-7},${hy(12)} ${c-10.2},${hy(19)} Z`,
+  pixie:`M${c-10.4},${hy(20)} C${c-11},${hy(8)} ${c-3},${hy(5)} ${c+1},${hy(5.5)} C${c+8},${hy(6)} ${c+11},${hy(11)} ${c+10.4},${hy(18)} C${c+6},${hy(14)} ${c+2},${hy(11)} ${c-4},${hy(14)} C${c-7},${hy(15)} ${c-9},${hy(17)} ${c-10.4},${hy(20)} Z`,
+  curly:`M${c-10.5},${hy(20)} C${c-11},${hy(8)} ${c-4},${hy(5)} ${c},${hy(5)} C${c+4},${hy(5)} ${c+11},${hy(8)} ${c+10.5},${hy(20)} C${c+7},${hy(12)} ${c-7},${hy(12)} ${c-10.5},${hy(20)} Z`,
+  ponytail:`M${c-10.2},${hy(19)} C${c-10.5},${hy(9)} ${c-4},${hy(6.5)} ${c},${hy(6.5)} C${c+4},${hy(6.5)} ${c+10.5},${hy(9)} ${c+10.2},${hy(19)} C${c+7},${hy(12)} ${c-7},${hy(12)} ${c-10.2},${hy(19)} Z`}[hs];
+ const fcy=crown+headH*0.55,fry=headH*0.46,frx=fry*0.79;
+ const face=`<ellipse cx="${c}" cy="${fcy}" rx="${frx}" ry="${fry}" fill="url(#f${g})" stroke="${d}" stroke-width=".35"/>
+ <path d="M${c-6.2},${hy(16.3)} q2.2,${-1.4*headH/26.7} 4.3,${-.2*headH/26.7}" stroke="${hd}" stroke-width=".8" fill="none" stroke-linecap="round"/><path d="M${c+1.9},${hy(16.1)} q2.1,${-1.2*headH/26.7} 4.3,${.2*headH/26.7}" stroke="${hd}" stroke-width=".8" fill="none" stroke-linecap="round"/>
+ <ellipse cx="${c-3.9}" cy="${hy(19.6)}" rx="1.5" ry="1" fill="#fff"/><ellipse cx="${c+3.9}" cy="${hy(19.6)}" rx="1.5" ry="1" fill="#fff"/><circle cx="${c-3.8}" cy="${hy(19.6)}" r=".85" fill="#2a1c15"/><circle cx="${c+4}" cy="${hy(19.6)}" r=".85" fill="#2a1c15"/>
+ <path d="M${c-5.5},${hy(19)} q1.6,${-1.3*headH/26.7} 3.2,0M${c+2.3},${hy(19)} q1.6,${-1.3*headH/26.7} 3.2,0" stroke="#2a1c15" stroke-width=".45" fill="none"/><path d="M${c-.3},${hy(21)} q-.9,${2.6*headH/26.7} .2,${3.1*headH/26.7} q.8,.2 1,-.2" stroke="${d}" stroke-width=".4" fill="none"/>
+ <path d="M${c-2.6},${hy(27)} q1.3,${-.9*headH/26.7} 2.6,${-.3*headH/26.7} q1.3,${-.6*headH/26.7} 2.6,${.3*headH/26.7} q-1.3,${1.6*headH/26.7} -2.6,${1.5*headH/26.7} q-1.3,${.1*headH/26.7} -2.6,${-1.5*headH/26.7} Z" fill="${lip}" opacity=".85"/>
+ <ellipse cx="${c-6}" cy="${hy(24)}" rx="2" ry="1.1" fill="#e98a8a" opacity=".18"/><ellipse cx="${c+6}" cy="${hy(24)}" rx="2" ry="1.1" fill="#e98a8a" opacity=".18"/>
+ <path d="${front}" fill="url(#h${g})"/>${hs==='bun'||hs==='ponytail'?`<path d="M${c-4},${hy(8)} C${c-1},${hy(7)} ${c+3},${hy(7.5)} ${c+6},${hy(9)}" stroke="${hl}" stroke-width=".5" fill="none" opacity=".7"/>`:''}`;
  const sk2=`fill="${F}" stroke="${d}" stroke-width=".35" stroke-linejoin="round"`;
- return `<svg class="av" viewBox="0 0 100 220" xmlns="http://www.w3.org/2000/svg" aria-label="Avatar" data-pose="${pose}"><defs>
+ const camisole=`M${c-bu+0.8},${bust-5} Q${c},${bust-9} ${c+bu-0.8},${bust-5} L${c+bu-0.5},${bust+7} Q${c},${bust+11} ${c-bu+0.5},${bust+7} Z`;
+ const straps=`<path d="M${c-3.4},${shoulder+2} L${c-bu+3},${bust-5} M${c+3.4},${shoulder+2} L${c+bu-3},${bust-5}" fill="none" stroke="${uwd}" stroke-width="1.1" stroke-linecap="round"/>`;
+ const briefs=`M${c-hi+0.5},${hip-2} C${c-6},${hip-3} ${c+6},${hip-3} ${c+hi-0.5},${hip-2} C${c+hi-1},${(hip+crotch)/2} ${c+6},${crotch-2} ${c+1.6},${crotch+0.6} L${c-1.6},${crotch+0.6} C${c-6},${crotch-2} ${c-hi+1},${(hip+crotch)/2} ${c-hi+0.5},${hip-2} Z`;
+ const nw=3.15,nh=Math.max(5.5,neck-chin+4);
+ return `<svg class="av" viewBox="0 0 100 220" xmlns="http://www.w3.org/2000/svg" aria-label="Avatar" data-pose="${pose}" data-height="${fmtHeight(L.inches)}"><defs>
  <linearGradient id="s${g}" x1="0" x2="1"><stop offset="0" stop-color="${d}"/><stop offset=".35" stop-color="${sk}"/><stop offset=".55" stop-color="${l}"/><stop offset=".72" stop-color="${sk}"/><stop offset="1" stop-color="${d}"/></linearGradient>
  <radialGradient id="f${g}" cx=".45" cy=".4" r=".7"><stop offset="0" stop-color="${l}"/><stop offset=".7" stop-color="${sk}"/><stop offset="1" stop-color="${d}"/></radialGradient>
  <linearGradient id="h${g}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${hl}"/><stop offset=".6" stop-color="${hc}"/><stop offset="1" stop-color="${hd}"/></linearGradient>
  <linearGradient id="u${g}" x1="0" x2="1"><stop offset="0" stop-color="${uwd}"/><stop offset=".5" stop-color="${uw}"/><stop offset="1" stop-color="${uwd}"/></linearGradient>
  <radialGradient id="g${g}"><stop offset="0" stop-color="#000" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
- <ellipse cx="50" cy="206" rx="22" ry="4.5" fill="url(#g${g})"/>
- ${seg('fig',50,205,`${seg('head',50,32,back)}
- <g ${sk2}>${leg(-1)}${leg(1)}${arm(-1)}${arm(1)}<path d="${torso}"/><rect x="${c-3.4}" y="28" width="6.8" height="10" rx="3"/></g>
- <g fill="none" stroke="${d}" stroke-width=".35" opacity=".6"><path d="M${c-3},56 C${c-2},60 ${c+2},60 ${c+3},56"/><path d="M${c},86 v3"/></g>
- <path d="M${L+2.5},53.5 Q${c-6},48.5 ${c},55 Q${c+6},48.5 ${R-2.5},53.5 L${R-3.2},63 Q${c},65.5 ${L+3.2},63 Z" fill="url(#u${g})" stroke="${uwd}" stroke-width=".4"/>
- <path d="M${c-h+0.4},105 C${c-6},104 ${c+6},104 ${c+h-0.4},105 C${c+h-1},110 ${c+6},116 ${c+1.6},121 L${c-1.6},121 C${c-6},116 ${c-h+1},110 ${c-h+0.4},105 Z" fill="url(#u${g})" stroke="${uwd}" stroke-width=".4"/>
- ${seg('head',50,32,face)}`)}
+ <ellipse cx="50" cy="${feet}" rx="${Math.max(18,hi+6)}" ry="4.5" fill="url(#g${g})"/>
+ ${seg('fig',50,feet-2,`${seg('head',50,chin-2,back)}
+ <g ${sk2}>${leg(-1)}${leg(1)}${arm(-1)}${arm(1)}<path d="${torso}"/><rect x="${c-nw}" y="${chin-1.5}" width="${nw*2}" height="${nh}" rx="3"/></g>
+ <g fill="none" stroke="${d}" stroke-width=".35" opacity=".6"><path d="M${c-3},${bust+1} C${c-2},${bust+5} ${c+2},${bust+5} ${c+3},${bust+1}"/><path d="M${c},${waist-2} v3"/></g>
+ ${straps}<path d="${camisole}" fill="url(#u${g})" stroke="${uwd}" stroke-width=".4"/>
+ <path d="${briefs}" fill="url(#u${g})" stroke="${uwd}" stroke-width=".4"/>
+ ${seg('head',50,chin-2,face)}`)}
  </svg>`}
 function applyPose(p,animate){p=POSES[p]?p:'casual';document.querySelectorAll('svg.av').forEach(svg=>{if(animate)svg.classList.add('posing');svg.dataset.pose=p;svg.querySelectorAll('[data-seg]').forEach(el=>el.style.transform=segT(el.dataset.seg,p));if(animate)setTimeout(()=>svg.classList.remove('posing'),700)});
  const st=$('#swstage');if(st){if(animate){st.classList.add('posing');setTimeout(()=>st.classList.remove('posing'),700)}[['t',swCur('t')],['b',swCur('b')],['s',swCur('s')]].forEach(([z,i])=>{if(i)swSetFit(z,swLive&&swLive.id===i.id?swLive.f:swFit(i))})}
- const bd=$('#board');if(bd){bd.classList.toggle('posing',!!animate);bd.querySelectorAll('img.pc').forEach(im=>{const d=S.dress[+im.dataset.pc];const it=d&&item(d.id);const z=it&&(SW_ZONE(it)||'');const D=(POSE_D[p]||{})[z]||{};im.style.transform=`translateX(${(D.dx||0)*bd.clientWidth/100}px) scale(${1+(D.ds||0)/40})`})}
+ const bd=$('#board');if(bd){bd.classList.toggle('posing',!!animate);bd.querySelectorAll('img.pc').forEach(im=>{const d=S.dress[+im.dataset.pc];const it=d&&item(d.id);const z=it&&(SW_ZONE(it)||'');const D=(POSE_D[p]||{})[z]||{};const rot=d&&d.r||it&&it.fit&&it.fit.r||0;im.style.transform=`translateX(${(D.dx||0)*bd.clientWidth/100}px) scale(${1+(D.ds||0)/40}) rotate(${rot}deg)`})}
  S.lastPose=p;document.querySelectorAll('[data-act=pose_set]').forEach(b=>b.classList.toggle('on',(S.poseOverride||'auto')===b.dataset.k));const a=$('#poseauto');if(a)a.textContent=POSES[p].n}
 function poseChips(){const o=S.poseOverride||'auto';if(avKind()!=='drawn')return `<p class="mut" style="margin:-4px 0 10px">Poses apply to the Drawn avatar only. Switch avatar in Me.</p>`;return `<div class="chips posechips"><button class="chip ${o==='auto'?'on':''}" data-act="pose_set" data-k="auto">Auto · <span id="poseauto">${POSES[curPose()].n}</span></button>${Object.entries(POSES).map(([k,v])=>`<button class="chip ${o===k?'on':''}" data-act="pose_set" data-k="${k}">${v.n}</button>`).join('')}</div>`}
 document.addEventListener('click',async e=>{const t=e.target.closest('[data-act="pose_set"]');if(!t)return;e.stopImmediatePropagation();S.poseOverride=t.dataset.k==='auto'?'':t.dataset.k;kvSet('poseOverride',S.poseOverride);applyPose(curPose(),true)},true);
+function measFields(p){const u=p.measUnit==='cm'?'cm':'in';const show=k=>{if(!hasMeas(p,k))return'';const v=+p[k];return u==='cm'?inToCm(v):v};
+ const hin=heightIn(p);const ft=Math.floor(hin/12),inch=Math.round((hin-ft*12)*2)/2;
+ return `<div id="measbox">
+ <div class="row sp" style="margin-top:8px"><label style="margin:0">Height</label><span class="chips"><button class="chip ${u==='in'?'on':''}" data-act="meas_unit" data-k="in">ft/in</button><button class="chip ${u==='cm'?'on':''}" data-act="meas_unit" data-k="cm">cm</button></span></div>
+ ${u==='in'?`<div class="htrow"><div><label>Feet</label><input id="h_ft" inputmode="numeric" value="${ft}"></div><div><label>Inches</label><input id="h_in" inputmode="decimal" value="${inch}"></div></div>`:`<label>Height (cm)</label><input id="h_cm" inputmode="decimal" value="${inToCm(hin)}" placeholder="e.g. 167.6">`}
+ <p class="mut" style="margin:6px 0 0">Default is 5'6" (167.6 cm), Brittney's height. Anyone can enter theirs. You can also type 5'6 or 167cm.</p>
+ <label>Measurements <span class="mut">(optional · leave blank for default shape)</span></label>
+ <div class="measgrid">
+  <div><label>Bust</label><input id="m_bust" inputmode="decimal" placeholder="${u==='cm'?'cm':'in'}" value="${show('bust')}"></div>
+  <div><label>Waist</label><input id="m_waist" inputmode="decimal" placeholder="${u==='cm'?'cm':'in'}" value="${show('waist')}"></div>
+  <div><label>Hips</label><input id="m_hips" inputmode="decimal" placeholder="${u==='cm'?'cm':'in'}" value="${show('hips')}"></div>
+  <div><label>Inseam</label><input id="m_inseam" inputmode="decimal" placeholder="${u==='cm'?'cm':'in'}" value="${show('inseam')}"></div>
+  <div style="grid-column:1/-1"><label>Shoe size</label><input id="m_shoe" placeholder="e.g. 8 or 38 EU" value="${esc(p.shoe||'')}"></div>
+ </div>
+ <p class="mut" style="margin:6px 0 0">Bust, waist and hips reshape the drawn avatar. Inseam adjusts leg length. Photo avatars stay as lined up; height is just a label there.</p>
+ </div>`}
 function avatarOptions(p){return `<label>Avatar hairstyle</label><div class="chips">${AV_HAIR.map(x=>`<button class="chip ${(p.hair||'long')===x?'on':''}" data-act="av_set" data-k="hair|${x}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>
  <label>Hair color</label><div class="chips">${Object.entries(AV_HC).map(([n,v])=>`<button class="chip ${(p.hairColor||'Brown')===n?'on':''}" data-act="av_set" data-k="hairColor|${n}" style="background:${v};width:34px;height:34px;padding:0" aria-label="${n}"></button>`).join('')}</div>
  <label>Body shape</label><div class="chips">${AV_BODY.map(x=>`<button class="chip ${(p.body||'average')===x?'on':''}" data-act="av_set" data-k="body|${x}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>
- <div class="avprev">${avatarSVG(p.skin)}</div>`}
+ <div class="avprev">${avatarSVG(p.skin)}</div><p class="mut" style="text-align:center;margin:4px 0 0">${fmtHeight(heightIn(p))} · ${inToCm(heightIn(p))} cm</p>`}
 document.addEventListener('click',async e=>{const t=e.target.closest('[data-act="av_set"]');if(!t)return;e.stopImmediatePropagation();const[k,v]=t.dataset.k.split('|');S.profile[k]=v;await kvSet('profile',S.profile);render()},true);
+
+function refreshAvPreview(){const box=document.querySelector('.avprev');if(box){box.innerHTML=avatarSVG(S.profile.skin);const lab=box.nextElementSibling;if(lab&&lab.classList.contains('mut'))lab.textContent=fmtHeight(heightIn(S.profile))+' · '+inToCm(heightIn(S.profile))+' cm'}document.querySelectorAll('#pav_hlabel').forEach(el=>{el.textContent=fmtHeight(heightIn(S.profile))})}
+function readMeasForm(){const p=S.profile;if(!p)return;const u=p.measUnit==='cm'?'cm':'in';
+ if($('#h_cm')){const v=parseHeightInput($('#h_cm').value);if(v)p.heightIn=Math.max(AV_H_MIN,Math.min(AV_H_MAX,v))}
+ else if($('#h_ft')){const rawFt=$('#h_ft').value.trim(),rawIn=$('#h_in').value.trim();const parsed=parseHeightInput(rawFt);let h;
+  if(parsed&&(/cm|'|ft/.test(rawFt.toLowerCase())||+rawFt>=100))h=parsed;
+  else{const ft=parseFloat(rawFt),inch=parseFloat(rawIn);if(Number.isFinite(ft)||Number.isFinite(inch))h=(Number.isFinite(ft)?ft:0)*12+(Number.isFinite(inch)?inch:0)}
+  if(h>0)p.heightIn=Math.max(AV_H_MIN,Math.min(AV_H_MAX,h))}
+ for(const k of['bust','waist','hips','inseam']){const el=$('#m_'+k);if(!el)continue;const v=parseMeas(el.value,u);if(v===''||v==null)delete p[k];else p[k]=v}
+ if($('#m_shoe'))p.shoe=$('#m_shoe').value.trim()}
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-act="meas_unit"]');if(!t)return;e.stopImmediatePropagation();readMeasForm();S.profile.measUnit=t.dataset.k==='cm'?'cm':'in';await kvSet('profile',S.profile);render()},true);
+document.addEventListener('input',e=>{if(!e.target.closest||!e.target.closest('#measbox'))return;readMeasForm();kvSet('profile',S.profile);refreshAvPreview()},true);
+
 
 /* ===== Images ===== */
 function fileToImg(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=u})}
@@ -299,6 +398,7 @@ function vAlerts(){const A=computeAlerts();const s=S.items.find(i=>i.cat==='Bott
 
 function vMe(){const s=S.settings,p=S.profile;const tw=S.items.reduce((a,i)=>a+(i.wears||0),0);const priced=S.items.filter(i=>i.price>0);const spent=priced.reduce((a,i)=>a+ +i.price,0);
  return `<h2>Profile</h2><div class="card"><div class="row" style="flex-wrap:nowrap">${p.photo?`<img src="${p.photo}" class="avatarImg">`:`<div class="avatarImg" style="display:flex;align-items:center;justify-content:center">👤</div>`}<div style="flex:1"><label>Your name</label><input id="pname" placeholder="e.g. Brittney or Steven" value="${esc(p.name)}" maxlength="40"><p class="mut" style="margin:6px 0 0">Header shows <b>${esc(dripTitle())}</b>. Leave blank for Britts Drip. Share a link with <code>?name=Steven</code> to prefill on a new phone.</p></div></div>
+ ${measFields(p)}
  <div class="row" style="margin-top:10px"><label class="btn sm sec" style="margin:0;color:var(--tx)">📷 Body photo<input type="file" accept="image/*" capture="user" id="bodycam" hidden></label><label class="btn sm sec" style="margin:0;color:var(--tx)">🖼 From gallery<input type="file" accept="image/*" id="bodygal" hidden></label>${p.photo?'<button class="btn sm sec" data-act="delbody">Delete photo</button>':''}</div>
  ${p.photo?`<div class="tog"><span>Use my body photo on Dress Me board</span><input type="checkbox" id="useboard" style="width:auto" ${p.useOnBoard?'checked':''}></div>`:''}
  <label>Stylized avatar skin tone</label><div class="chips">${['#f6d7c3','#e8b894','#c68c5f','#8d5a3b','#5a3825','#3b2417'].map(c=>`<button class="chip ${p.skin===c?'on':''}" data-skin="${c}" style="background:${c};width:34px;height:34px;padding:0"></button>`).join('')}</div>${avatarOptions(p)}
@@ -476,7 +576,7 @@ document.addEventListener('change',async e=>{const id=e.target.id;
 });
 
 /* ===== Boot ===== */
-async function boot(reload){if(!reload)await openDB();S.items=(await all('items')).sort((a,b)=>b.created-a.created);S.outfits=(await all('outfits')).sort((a,b)=>b.created-a.created);S.plans=await kvGet('plans',{});S.history=await kvGet('history',[]);S.profile=Object.assign(S.profile,await kvGet('profile',{}));S.settings=Object.assign(S.settings,await kvGet('settings',{}));S.dress=await kvGet('dress',[]);S.dismissed=await kvGet('dismissed',[]);S.dressMode=await kvGet('dressMode','board');S.swipe=await kvGet('swipe',{t:0,b:0});const qn=takeNameQuery();if(qn&&!dripName()){S.profile.name=qn;await kvSet('profile',S.profile)}render();loadWeather()}
+async function boot(reload){if(!reload)await openDB();S.items=(await all('items')).sort((a,b)=>b.created-a.created);S.outfits=(await all('outfits')).sort((a,b)=>b.created-a.created);S.plans=await kvGet('plans',{});S.history=await kvGet('history',[]);S.profile=Object.assign(S.profile,await kvGet('profile',{}));if(S.profile.heightIn==null||S.profile.heightIn==='')S.profile.heightIn=66;if(!S.profile.measUnit)S.profile.measUnit='in';S.settings=Object.assign(S.settings,await kvGet('settings',{}));S.dress=await kvGet('dress',[]);S.dismissed=await kvGet('dismissed',[]);S.dressMode=await kvGet('dressMode','board');S.swipe=await kvGet('swipe',{t:0,b:0});const qn=takeNameQuery();if(qn&&!dripName()){S.profile.name=qn;await kvSet('profile',S.profile)}render();loadWeather()}
 boot().catch(e=>{$('#view').innerHTML='<div class="card">Storage unavailable: '+esc(e.message)+'. Private browsing can block it.</div>'});
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
@@ -484,7 +584,7 @@ if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
 /* ===== Swipe try-on (free, on-device overlay) ===== */
 const SW_TOP=['Tops','Outerwear','Dresses'],SW_BOT=['Bottoms'],SW_SHOE=['Shoes'];
 const SW_ZONE=i=>SW_TOP.includes(i.cat)?'t':SW_BOT.includes(i.cat)?'b':SW_SHOE.includes(i.cat)?'s':null;
-const SW_DEF={t:{x:50,y:35,s:40},b:{x:50,y:70,s:27},s:{x:50,y:93.5,s:24},Dresses:{x:50,y:47,s:42},Outerwear:{x:50,y:32,s:52}};
+const SW_DEF=()=>swAnchors();
 const ZN={t:'top',b:'bottom',s:'shoes'};
 const isShop=i=>(i.tags||[]).includes('Shop');
 const safeSrc=s=>typeof s==='string'&&/^(data:image\/|https:\/\/|blob:)/i.test(s)?s:'';
@@ -494,7 +594,7 @@ function swCur(z){if(z&&z.startsWith('a:'))return item(z.slice(2))||null;const L
 function accDef(i){const n=((i.name||'')+' '+(i.tags||[]).join(' ')).toLowerCase();
  if(/hat|cap|beanie|beret/.test(n))return{x:50,y:7,s:30};if(/bag|purse|tote|clutch|backpack/.test(n))return{x:78,y:55,s:30};
  if(/necklace|chain|pendant|scarf/.test(n))return{x:50,y:24,s:20};if(/earring|ring|watch|bracelet/.test(n))return{x:70,y:52,s:10};if(/glass/.test(n))return{x:50,y:10,s:18};return{x:50,y:30,s:20}}
-function swFit(i){const z=SW_ZONE(i);return Object.assign({},i.cat==='Accessories'?accDef(i):(SW_DEF[i.cat]||SW_DEF[z]||{x:50,y:40,s:30}),i.fit||{})}
+function swFit(i){const z=SW_ZONE(i);return Object.assign({},i.cat==='Accessories'?accDef(i):(SW_DEF()[i.cat]||SW_DEF()[z]||{x:50,y:40,s:30}),i.fit||{})}
 function swImg(i){return safeSrc(i.cut)||safeSrc(i.img)}
 const lid=k=>'swg_'+k.replace(':','_');
 function buyBar(ids){const L=ids.map(item).filter(i=>i&&isShop(i)&&safeUrl(i.buyUrl));return L.length?`<div class="card buybar">${L.map(i=>`<div class="row sp"><span>🛍 ${esc(i.name)}${i.price?' · $'+esc(i.price):''}</span><a class="btn sm" href="${esc(safeUrl(i.buyUrl))}" target="_blank" rel="noopener sponsored">Buy</a></div>`).join('')}</div>`:''}
@@ -524,7 +624,7 @@ function vSwipe(){const t=swCur('t'),b=swCur('b'),s=swCur('s');const adj=S.swAdj
  ${S.items.length?'':'<div class="card mut">Add clothes in the Closet tab first.</div>'}`}
 function swSetFit(k,f0){const f=posed(k,f0);const g=document.getElementById(lid(k));if(g){g.style.left=f.x+'%';g.style.top=f.y+'%';g.style.width=f.s+'%'}}
 let swLive=null;
-const zoneAt=fy=>fy<0.42?'t':fy<0.8?'b':'s';
+const zoneAt=fy=>fy<0.46?'t':fy<0.82?'b':'s';
 function initSwipe(){const st=$('#swstage');if(!st)return;const P=new Map();let g=null;
  st.addEventListener('pointerdown',e=>{if(e.target.closest('.swa'))return;P.set(e.pointerId,{x:e.clientX,y:e.clientY});st.setPointerCapture?.(e.pointerId);
   const r=st.getBoundingClientRect();const adj=S.swAdj;
@@ -641,7 +741,7 @@ function sharedList(){const L=S.shared||[];openSheet(`<div class="row sp"><h2 st
  ${L.length?L.map(s=>`<div class="card"><div class="row sp"><b>${esc(s.kind==='suggestion'?'Outfit idea from '+s.owner:poss(s.owner)+' '+(s.kind==='wishlist'?'gift ideas':s.kind))}</b><span><button class="btn sm sec" data-act="x_open" data-k="${s.id}">Open</button> <button class="btn sm sec" data-act="x_sdel" data-k="${s.id}">✕</button></span></div><p class="mut">${s.items.length} item(s) · ${new Date(s.received).toLocaleDateString()}</p></div>`).join(''):'<p class="mut">Nothing yet. When someone sends you a Britts Drip link or file, open it here.</p>'}
  <label class="btn sec full" style="text-align:center;margin-top:8px">Import shared file<input type="file" id="x_imp" accept=".bdrip,.json,application/json,application/octet-stream" hidden></label>`)}
 let xSel=new Set();
-function miniStage(items){return `<div class="ministage">${avatarSVG(S.profile.skin)}${items.map(i=>{const f=i.cat==='Accessories'?accDef(i):(SW_DEF[i.cat]||SW_DEF[SW_ZONE(i)]||{x:50,y:40,s:30});return i.img?`<img src="${i.img}" style="left:${f.x}%;top:${f.y}%;width:${f.s}%">`:''}).join('')}</div>`}
+function miniStage(items){return `<div class="ministage">${avatarSVG(S.profile.skin)}${items.map(i=>{const f=i.cat==='Accessories'?accDef(i):(SW_DEF()[i.cat]||SW_DEF()[SW_ZONE(i)]||{x:50,y:40,s:30});return i.img?`<img src="${i.img}" style="left:${f.x}%;top:${f.y}%;width:${f.s}%">`:''}).join('')}</div>`}
 function openShared(id){const s=(S.shared||[]).find(x=>x.id===id);if(!s)return;S.xOpen=id;const sel=s.items.filter(i=>xSel.has(i.id));
  const sw=i=>i.img?`<img src="${i.img}" alt="">`:`<div class="sw" style="background:${esc(COLORS[i.color]||'#bbb')}"></div>`;
  if(s.kind==='wishlist')return openSheet(`<div class="row sp"><h2 style="margin:0">${esc(poss(s.owner))} gift ideas</h2><button class="btn sm sec" data-act="close">✕</button></div><span class="badge">read-only</span>
@@ -736,15 +836,15 @@ kvGet&&setTimeout(async()=>{for(let k=0;k<100&&!db;k++)await new Promise(r=>setT
 
 /* ===== Photo / AI avatar ===== */
 const AVF={w:400,h:880};// same 100:220 frame as the drawn avatar
-const AV_GUIDE={head:5,shoulder:41,hip:108,feet:205};// viewBox units (of 220)
+const AV_GUIDE=()=>avGuide({heightIn:66,body:'average'});// photo align uses the default 5'6" figure
 function avKind(){const p=S.profile||{};const m=p.avMode||(p.photo&&p.useOnBoard?'legacy':'drawn');if(m==='photo'&&p.avPhoto)return'photo';if(m==='ai'&&p.avAI)return'ai';if(m==='legacy')return'legacy';return'drawn'}
 function avatarBody(where){const k=avKind(),p=S.profile;const src=k==='photo'?p.avPhoto:k==='ai'?p.avAI:k==='legacy'?p.photo:'';
  if(!src)return where==='swipe'?`<div class="swbody">${avatarSVG(p.skin)}</div>`:avatarSVG(p.skin);
  return where==='swipe'?`<img src="${src}" class="swbody" alt="" draggable="false">`:`<img src="${src}" class="av" alt="" style="object-fit:contain">`}
 function ghostSVG(){const lp=S.lastPose;S.lastPose='work';const inner=avatarSVG('#ffffff').replace(/^<svg[^>]*>/,'').replace(/<\/svg>$/,'');S.lastPose=lp;return `<svg class="ghost" viewBox="0 0 100 220" preserveAspectRatio="xMidYMid meet"><g opacity=".9">${inner}</g>
- ${Object.entries(AV_GUIDE).map(([k,y])=>`<line x1="4" x2="96" y1="${y}" y2="${y}" stroke="#7c3aed" stroke-width=".5" stroke-dasharray="2 1.5"/><text x="3" y="${y-1}" font-size="4" fill="#7c3aed">${k}</text>`).join('')}</svg>`}
+ ${Object.entries(AV_GUIDE()).map(([k,y])=>`<line x1="4" x2="96" y1="${y}" y2="${y}" stroke="#7c3aed" stroke-width=".5" stroke-dasharray="2 1.5"/><text x="3" y="${y-1}" font-size="4" fill="#7c3aed">${k}</text>`).join('')}</svg>`}
 // Auto-fit: trimmed person spans head→feet guide, centred
-async function autoAlign(cut){const im=await loadImg(cut);const W=AVF.w,H=AVF.h;const top=AV_GUIDE.head/220*H,bot=AV_GUIDE.feet/220*H;const sc=(bot-top)/im.naturalHeight;return{x:W/2-im.naturalWidth*sc/2,y:top,s:sc}}
+async function autoAlign(cut){const im=await loadImg(cut);const W=AVF.w,H=AVF.h;const top=AV_GUIDE().head/220*H,bot=AV_GUIDE().feet/220*H;const sc=(bot-top)/im.naturalHeight;return{x:W/2-im.naturalWidth*sc/2,y:top,s:sc}}
 async function renderAligned(cut,t){const im=await loadImg(cut);const c=document.createElement('canvas');c.width=AVF.w;c.height=AVF.h;c.getContext('2d').drawImage(im,t.x,t.y,im.naturalWidth*t.s,im.naturalHeight*t.s);return c.toDataURL('image/png')}
 let avDraft=null;// {cut,t,kind}
 function alignSheet(){const d=avDraft;openSheet(`<div class="row sp"><h2 style="margin:0">Line up your avatar</h2><button class="btn sm sec" data-act="close">✕</button></div>
@@ -782,6 +882,7 @@ function avatarCard(){const p=S.profile,k=avKind(),m=p.avMode||'drawn';const opt
  const prev=k==='drawn'?avatarSVG(p.skin):`<img src="${k==='photo'?p.avPhoto:k==='ai'?p.avAI:p.photo}" style="width:100%;height:100%;object-fit:contain">`;
  return `<div class="card"><div class="row sp"><b>My avatar</b><span class="badge">${k==='drawn'?'Drawn':k==='photo'?'Photo':k==='ai'?'AI-styled':'Body photo'}</span></div>
  <div class="chips" style="margin-top:8px">${opt('drawn','Drawn',1)}${opt('photo','Photo',!!p.avPhoto)}${opt('ai','AI-styled',!!p.avAI)}</div>
+ <p class="mut" id="pav_hlabel" style="text-align:center;margin:6px 0 0">${fmtHeight(heightIn(p))}${k==='drawn'?'':' · height is a label on photo avatars'}</p>
  <div class="row" style="flex-wrap:nowrap;margin-top:8px;align-items:flex-start"><div class="avprev" style="margin:0;flex:none">${prev}</div>
  <div style="flex:1"><p class="mut" style="margin-top:0">Poses work with the Drawn avatar only. Photo and AI avatars stay still, and clothes line up on the dashed guides.</p>
  <button class="btn sm full" data-act="pav_cam">📷 Snap with outline</button><label class="btn sm sec full" style="text-align:center;margin-top:6px">🖼 Upload full-body photo<input type="file" accept="image/*" id="pav_file" hidden></label>

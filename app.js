@@ -23,6 +23,7 @@ const dripName=()=>(S.profile.name||'').trim().slice(0,40);
 const dripTitle=()=>{const n=dripName();return n?poss(n)+' Drip':'Britts Drip'};
 function applyBrand(){const t=dripTitle(),n=dripName();document.title=t;const b=$('.brand');if(b)b.innerHTML=n?`${esc(poss(n))} <b>Drip</b>`:`Britts <b>Drip</b>`;const m=document.querySelector('meta[name=apple-mobile-web-app-title]');if(m)m.content=t}
 function takeNameQuery(){try{const u=new URL(location.href);if(!u.searchParams.has('name'))return'';const raw=(u.searchParams.get('name')||'').trim().slice(0,40);u.searchParams.delete('name');const qs=u.searchParams.toString();history.replaceState(null,'',u.pathname+(qs?'?'+qs:'')+u.hash);return raw}catch(e){return''}}
+function takeSyncQuery(){try{const u=new URL(location.href);if(!u.searchParams.has('sync'))return'';const raw=normShareCode(u.searchParams.get('sync')||'');u.searchParams.delete('sync');const qs=u.searchParams.toString();history.replaceState(null,'',u.pathname+(qs?'?'+qs:'')+u.hash);return raw}catch(e){return''}}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const today=()=>ymd(new Date());function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 const daysAgo=d=>d?Math.floor((Date.now()-new Date(d+'T12:00').getTime())/864e5):Infinity;
@@ -240,7 +241,7 @@ function seasonNow(){const m=new Date().getMonth();return m<2||m===11?'Winter':m
 function recentWornIds(n=7){const s=new Set();S.history.filter(h=>daysAgo(h.date)<n).forEach(h=>h.items.forEach(i=>s.add(i)));return s}
 function suggest(tc,rain,mood,count=3,exclude=new Set()){
  const need=warmthNeed(tc),occ=MOODS[mood]||[],season=seasonNow(),recent=recentWornIds(7);
- const pool=S.items.filter(i=>i.laundry!=='dirty'&&i.laundry!=='cleaners'&&!i.outdated);
+ const pool=S.items.filter(i=>i.laundry!=='dirty'&&i.laundry!=='cleaners'&&!i.outdated&&!exclude.has(i.id));
  const score=i=>{let s=0;s-=Math.abs((i.warmth||3)-need)*2;if(i.occasions?.some(o=>occ.includes(o)))s+=3;if(!i.seasons?.length||i.seasons.includes(season))s+=1.5;if(i.fav)s+=1;if(recent.has(i.id))s-=4;if(rain&&i.tags?.some(t=>/rain|waterproof/i.test(t)))s+=3;s+=Math.random()*1.2;return s};
  const by=c=>pool.filter(i=>i.cat===c).map(i=>[score(i),i]).sort((a,b)=>b[0]-a[0]).map(x=>x[1]);
  const tops=by('Tops'),bots=by('Bottoms'),dres=by('Dresses'),outs=by('Outerwear'),shoes=by('Shoes'),acc=by('Accessories');const res=[];const used=new Set();
@@ -252,9 +253,23 @@ function suggest(tc,rain,mood,count=3,exclude=new Set()){
 function outfitWornRecently(ids){const key=[...ids].sort().join();return S.history.find(h=>daysAgo(h.date)<7&&[...h.items].sort().join()===key)}
 
 /* ===== Persistence helpers ===== */
-async function saveItem(it){const i=S.items.findIndex(x=>x.id===it.id);if(i>=0)S.items[i]=it;else S.items.unshift(it);await put('items',it)}
+async function saveItem(it){it.updated=Date.now();const i=S.items.findIndex(x=>x.id===it.id);if(i>=0)S.items[i]=it;else S.items.unshift(it);await put('items',it);if(S.settings.syncCode)queueSync()}
 async function logWear(ids,date=today(),note=''){const rep=outfitWornRecently(ids);S.history.push({id:uid(),date,items:ids,note});for(const id of ids){const it=item(id);if(!it)continue;it.wears=(it.wears||0)+1;if(!it.lastWorn||it.lastWorn<date)it.lastWorn=date;if(it.laundry!=='cleaners')it.laundry=it.cat==='Shoes'||it.cat==='Accessories'||it.cat==='Outerwear'?it.laundry:'dirty';await put('items',it)}await kvSet('history',S.history);toast(rep?'Logged. Heads up: you wore this same outfit on '+rep.date:'Outfit logged as worn')}
 
+
+
+function costPerWear(i){const p=+i.price||0,w=Math.max(1,i.wears||0);return p>0?p/w:null}
+function wearStatsCard(){const priced=S.items.filter(i=>+i.price>0).map(i=>({i,cpw:costPerWear(i)})).sort((a,b)=>a.cpw-b.cpw);
+ const never=S.items.filter(i=>(i.wears||0)===0).sort((a,b)=>a.created-b.created);
+ const rarely=S.items.filter(i=>{const w=i.wears||0;const age=i.lastWorn?daysAgo(i.lastWorn):daysAgo(ymd(new Date(i.created)));return w>0&&(w<=2||age>=90)}).sort((a,b)=>(a.wears||0)-(b.wears||0)||(a.lastWorn||'').localeCompare(b.lastWorn||''));
+ const row=x=>`<div class="wearrow" data-item="${x.i?x.i.id:x.id}"><img src="${(x.i||x).img||''}" alt=""><div style="flex:1"><b>${esc((x.i||x).name)}</b><div class="mut">${x.cpw!=null?('Cost/wear $'+x.cpw.toFixed(2)+' · $'+(+(x.i||x).price).toFixed(0)+' · '+(x.i||x).wears+' wear'+((x.i||x).wears===1?'':'s')):((x.wears||(x.i&&x.i.wears)||0)+' wear'+(((x.wears||(x.i&&x.i.wears)||0)===1)?'':'s')+((x.i||x).lastWorn?' · last '+(x.i||x).lastWorn:' · never worn'))}</div></div><button class="btn sm sec" data-wear="${(x.i||x).id}">Wore today</button></div>`;
+ return `<div class="card"><div class="row sp"><b>Wear & value</b><span class="mut">${S.items.length} items</span></div>
+ <p class="mut" style="margin:6px 0 8px">Log an outfit with <b>Wore today</b> in Dress Me, Today, or here. Cost per wear uses the optional price on each item.</p>
+ ${priced.length?`<h3 style="margin:10px 0 6px">Cost per wear</h3>${priced.slice(0,12).map(row).join('')}${priced.length>12?'<p class="mut">Showing the 12 lowest cost-per-wear pieces.</p>':''}`:'<p class="mut">Add a price on an item to see cost per wear.</p>'}
+ ${never.length?`<h3 style="margin:12px 0 6px">Never worn <span class="mut">${never.length}</span></h3>${never.slice(0,10).map(i=>row(i)).join('')}`:''}
+ ${rarely.length?`<h3 style="margin:12px 0 6px">Rarely worn <span class="mut">${rarely.length}</span></h3><p class="mut" style="margin:0 0 6px">Two wears or fewer, or not worn in 90 days.</p>${rarely.slice(0,10).map(i=>row(i)).join('')}`:''}
+ ${!never.length&&!rarely.length&&S.items.length?'<p class="mut">Nice — everything has been worn recently.</p>':''}
+ </div>`}
 
 /* ===== AI try-on (fal via Worker) ===== */
 const DEFAULT_WORKER='https://britts-drip-tryon.hullander28.workers.dev';
@@ -346,9 +361,9 @@ function vCloset(){let L=S.items.filter(i=>(S.cat==='All'||i.cat===S.cat||(S.cat
 
 function vDress(){if(S.dressMode==='swipe')return vSwipe();const picked=S.dress.map(d=>item(d.id)).filter(Boolean);
  return `<h2>Dress Me</h2>${modeTabs()}<div class="board" id="board">${avatarBody('board')}
- ${S.dress.map((d,k)=>{const i=item(d.id);return i?`<img class="pc" src="${i.img}" data-pc="${k}" style="left:${d.x}px;top:${d.y}px;width:${d.w}px;z-index:${k+2}">`:''}).join('')}</div>
- <p class="mut">Drag pieces to arrange. Tap a piece below to add or remove. Use −/+ to resize the last piece you touched.</p>
- <div class="row"><button class="btn sm sec" data-act="szm">−</button><button class="btn sm sec" data-act="szp">+</button><button class="btn sm sec" data-act="clearb">Clear</button><button class="btn sm" data-act="saveb" ${picked.length?'':'disabled'}>Save outfit</button><button class="btn sm sec" data-act="wearb" ${picked.length?'':'disabled'}>Wear today</button></div>
+ ${S.dress.map((d,k)=>{const i=item(d.id);return i?`<img class="pc" src="${i.img}" data-pc="${k}" style="left:${d.x}px;top:${d.y}px;width:${d.w}px;z-index:${k+2};transform:rotate(${d.r||0}deg)">`:''}).join('')}</div>
+ <p class="mut">Drag a piece to move it. Pinch to resize and rotate, or use the sliders after you tap a piece. Fit is remembered for each item.</p>
+ <div id="bfit"></div><div class="row"><button class="btn sm sec" data-act="szm">−</button><button class="btn sm sec" data-act="szp">+</button><button class="btn sm sec" data-act="clearb">Clear</button><button class="btn sm" data-act="saveb" ${picked.length?'':'disabled'}>Save outfit</button><button class="btn sm sec" data-act="wearb" ${picked.length?'':'disabled'}>Wear today</button></div>
  <div class="card" style="margin-top:10px"><div class="row sp"><b>Try on for real</b><span class="badge">~$0.04/image</span></div>
  <p class="mut" style="margin:6px 0">Uses your body photo and each selected garment. Multiple pieces are sent one after another (~4¢ each). ${workerBase()?'Worker connected.':'No Worker URL set — configure it in Me (app still works without AI).'}</p>
  <p class="mut"><b>Consent:</b> When you tap below, your body photo and garment photo(s) are sent to your try-on Worker, which forwards them to <b>fal.ai</b> for processing. Do not use photos of other people without permission.</p>
@@ -359,16 +374,37 @@ function vDress(){if(S.dressMode==='swipe')return vSwipe();const picked=S.dress.
  <h3>Saved outfits</h3>${S.outfits.length?S.outfits.map(o=>`<div class="card"><div class="row sp"><b>${esc(o.name)}</b><span><button class="btn sm sec" data-loado="${o.id}">Load</button> <button class="btn sm sec" data-plano="${o.id}">Plan</button> <button class="btn sm sec" data-delo="${o.id}">✕</button></span></div>${o.aiImage?`<img src="${o.aiImage}" class="prev" style="margin-top:8px;max-height:220px" alt="AI try-on">`:''}<div class="strip" style="margin-top:8px">${o.items.map(item).filter(Boolean).map(i=>thumb(i)).join('')}</div></div>`).join(''):'<p class="mut">No saved outfits yet.</p>'}`}
 
 let drag=null,lastPc=null;
-function initBoard(){const b=$('#board');if(!b)return;const W=b.clientWidth;
- S.dress.forEach(d=>{if(d.x==null){}});
- b.onpointerdown=e=>{const t=e.target.closest('.pc');if(!t)return;e.preventDefault();const k=+t.dataset.pc;lastPc=k;drag={k,t,sx:e.clientX,sy:e.clientY,ox:S.dress[k].x,oy:S.dress[k].y};t.setPointerCapture(e.pointerId);t.style.zIndex=99};
- b.onpointermove=e=>{if(!drag)return;const d=S.dress[drag.k];d.x=Math.max(-40,Math.min(W-40,drag.ox+e.clientX-drag.sx));d.y=Math.max(-40,Math.min(400,drag.oy+e.clientY-drag.sy));drag.t.style.left=d.x+'px';drag.t.style.top=d.y+'px'};
- b.onpointerup=b.onpointercancel=()=>{if(drag){drag.t.style.zIndex=drag.k+2;kvSet('dress',S.dress)}drag=null}}
+function pieceTransform(d){return `rotate(${d.r||0}deg)`}
+function paintPiece(el,d){el.style.left=d.x+'px';el.style.top=d.y+'px';el.style.width=d.w+'px';el.style.transform=pieceTransform(d)}
+function showBoardFit(){const box=$('#bfit');if(!box)return;const d=S.dress[lastPc];const it=d&&item(d.id);if(!d||!it){box.innerHTML='';return}
+ box.innerHTML=`<div class="card" style="margin:8px 0"><div class="row sp"><b>Fit · ${esc(it.name||it.cat)}</b><button class="btn sm sec" data-act="bfit_reset">Reset</button></div>
+ <label>Size</label><input type="range" id="bfr_w" min="40" max="320" step="1" value="${d.w}">
+ <label>Rotate</label><input type="range" id="bfr_r" min="-180" max="180" step="1" value="${d.r||0}">
+ <p class="mut" style="margin:6px 0 0">Drag to move, pinch to resize and rotate. This fit is saved for this item.</p></div>`}
+async function persistBoardFit(k){const d=S.dress[k];if(!d)return;const it=item(d.id);if(!it)return;const b=$('#board');const W=b?b.clientWidth:340,H=b?b.clientHeight:440;
+ it.fitBoard={x:d.x/W*100,y:d.y/H*100,w:d.w/W*100,r:d.r||0};await put('items',it);kvSet('dress',S.dress)}
+function applySavedBoardFit(id,W,H){const it=item(id);const s=SLOT[it.cat]||[0,100,120];const base={id,w:s[2],x:(W-s[2])/2+s[0],y:s[1],r:0};
+ if(it&&it.fitBoard){const f=it.fitBoard;base.x=f.x/100*W;base.y=f.y/100*H;base.w=f.w/100*W;base.r=f.r||0}return base}
+function initBoard(){const b=$('#board');if(!b)return;const W=b.clientWidth,H=b.clientHeight,P=new Map();let g=null;
+ S.dress.forEach((d,k)=>{const el=b.querySelector(`[data-pc="${k}"]`);if(el)paintPiece(el,d)});
+ showBoardFit();
+ b.onpointerdown=e=>{const t=e.target.closest('.pc');if(!t)return;e.preventDefault();const k=+t.dataset.pc;lastPc=k;t.setPointerCapture(e.pointerId);t.style.zIndex=99;P.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  const d=S.dress[k];g={k,t,mode:'move',sx:e.clientX,sy:e.clientY,ox:d.x,oy:d.y,ow:d.w,or:d.r||0,d0:0,a0:0};showBoardFit()};
+ b.onpointermove=e=>{if(!P.has(e.pointerId)||!g)return;P.set(e.pointerId,{x:e.clientX,y:e.clientY});e.preventDefault();const d=S.dress[g.k],pts=[...P.values()];
+  if(pts.length>=2){const dist=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);const ang=Math.atan2(pts[1].y-pts[0].y,pts[1].x-pts[0].x);
+   if(!g.d0){g.d0=dist;g.a0=ang;g.ow=d.w;g.or=d.r||0;const cx=d.x+d.w/2,cy=d.y;g.cx=cx;g.cy=cy}
+   d.w=Math.max(40,Math.min(320,g.ow*dist/g.d0));d.r=Math.max(-180,Math.min(180,g.or+(ang-g.a0)*180/Math.PI));
+   d.x=g.cx-d.w/2}else{d.x=Math.max(-40,Math.min(W-40,g.ox+pts[0].x-g.sx));d.y=Math.max(-40,Math.min(H-20,g.oy+pts[0].y-g.sy))}
+  paintPiece(g.t,d);const ww=$('#bfr_w'),rr=$('#bfr_r');if(ww)ww.value=d.w;if(rr)rr.value=d.r||0};
+ const up=async e=>{if(!P.has(e.pointerId))return;P.delete(e.pointerId);if(!g)return;
+  if(P.size===0){g.t.style.zIndex=g.k+2;await persistBoardFit(g.k);g=null;drag=null}else{const d=S.dress[g.k];g.ox=d.x;g.oy=d.y;g.ow=d.w;g.or=d.r||0;g.d0=0;const pts=[...P.values()];if(pts[0]){g.sx=pts[0].x;g.sy=pts[0].y}}};
+ b.onpointerup=b.onpointercancel=up}
+document.addEventListener('input',e=>{if(e.target.id!=='bfr_w'&&e.target.id!=='bfr_r')return;const d=S.dress[lastPc];if(!d)return;if(e.target.id==='bfr_w')d.w=+e.target.value;else d.r=+e.target.value;const el=document.querySelector(`[data-pc="${lastPc}"]`);if(el)paintPiece(el,d);persistBoardFit(lastPc)});
 const SLOT={Tops:[0,80,150],Outerwear:[0,70,170],Dresses:[0,80,160],Bottoms:[0,190,130],Shoes:[0,380,110],Accessories:[60,20,70]};
-function addToBoard(id){const i=item(id);const k=S.dress.findIndex(d=>d.id===id);if(k>=0){S.dress.splice(k,1)}else{S.dress=S.dress.filter(d=>{const x=item(d.id);return !x||x.cat!==i.cat||i.cat==='Accessories'});const W=$('#board')?.clientWidth||340;const s=SLOT[i.cat]||[0,100,120];S.dress.push({id,w:s[2],x:(W-s[2])/2+s[0],y:s[1]})}
+function addToBoard(id){const i=item(id);const k=S.dress.findIndex(d=>d.id===id);if(k>=0){S.dress.splice(k,1)}else{S.dress=S.dress.filter(d=>{const x=item(d.id);return !x||x.cat!==i.cat||i.cat==='Accessories'});const b=$('#board');const W=b?.clientWidth||340,H=b?.clientHeight||440;S.dress.push(applySavedBoardFit(id,W,H))}
  const order=['Shoes','Bottoms','Tops','Dresses','Outerwear','Accessories'];S.dress.sort((a,b)=>order.indexOf(item(a.id)?.cat)-order.indexOf(item(b.id)?.cat));kvSet('dress',S.dress);render();S.tab==='dress'&&0}
 function loadToBoard(ids){S.dress=[];ids.forEach(id=>item(id)&&addToBoardSilent(id));kvSet('dress',S.dress)}
-function addToBoardSilent(id){const i=item(id);const s=SLOT[i.cat]||[0,100,120];const W=Math.min(innerWidth-28,612);S.dress.push({id,w:s[2],x:(W-s[2])/2+s[0],y:s[1]});const order=['Shoes','Bottoms','Tops','Dresses','Outerwear','Accessories'];S.dress.sort((a,b)=>order.indexOf(item(a.id)?.cat)-order.indexOf(item(b.id)?.cat))}
+function addToBoardSilent(id){const W=Math.min(innerWidth-28,612),H=440;S.dress.push(applySavedBoardFit(id,W,H));const order=['Shoes','Bottoms','Tops','Dresses','Outerwear','Accessories'];S.dress.sort((a,b)=>order.indexOf(item(a.id)?.cat)-order.indexOf(item(b.id)?.cat))}
 
 function vPlan(){const now=new Date();const m=S.calMonth||new Date(now.getFullYear(),now.getMonth(),1);S.calMonth=m;const first=new Date(m.getFullYear(),m.getMonth(),1),n=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
  const hist={};S.history.forEach(h=>{(hist[h.date]=hist[h.date]||[]).push(h)});let cells='';for(let k=0;k<first.getDay();k++)cells+='<div></div>';
@@ -404,6 +440,7 @@ function vMe(){const s=S.settings,p=S.profile;const tw=S.items.reduce((a,i)=>a+(
  <label>Stylized avatar skin tone</label><div class="chips">${['#f6d7c3','#e8b894','#c68c5f','#8d5a3b','#5a3825','#3b2417'].map(c=>`<button class="chip ${p.skin===c?'on':''}" data-skin="${c}" style="background:${c};width:34px;height:34px;padding:0"></button>`).join('')}</div>${avatarOptions(p)}
  <p class="mut">By default, body photos stay on this phone only (IndexedDB). If you use <b>Try on for real</b>, photos are sent to your Worker and fal.ai for that request only.</p></div>
  <div class="card"><b>Stats</b><div class="row sp" style="margin-top:8px"><span>${S.items.length} items</span><span>${S.outfits.length} outfits</span><span>${tw} wears</span></div>${priced.length?`<p class="mut">Closet value $${spent.toFixed(0)} · avg cost per wear $${(spent/Math.max(1,priced.reduce((a,i)=>a+(i.wears||0),0))).toFixed(2)}</p>`:''}</div>
+ ${wearStatsCard()}
  <h3>Settings</h3><div class="card">
  <div class="tog"><span>Dark mode</span><input type="checkbox" id="dark" style="width:auto" ${s.dark?'checked':''}></div>
  <div class="tog"><span>Temperature</span><span class="chips"><button class="chip ${s.units==='F'?'on':''}" data-units="F">°F</button><button class="chip ${s.units==='C'?'on':''}" data-units="C">°C</button></span></div>
@@ -414,7 +451,7 @@ function vMe(){const s=S.settings,p=S.profile;const tw=S.items.reduce((a,i)=>a+(
  <div class="row" style="margin-top:8px"><button class="btn sm sec" data-act="saveworker">Save Worker URL</button><button class="btn sm sec" data-act="pingworker">Test connection</button></div>
  <div class="row" style="margin-top:12px"><button class="btn sm sec" data-act="export">Export closet (JSON)</button><label class="btn sm sec" style="margin:0;color:var(--tx)">Import JSON<input type="file" accept="application/json,.json" id="imp" hidden></label></div>
  <button class="btn dng full" style="margin-top:14px" data-act="wipe">Delete all data</button></div>
- <p class="mut">${esc(dripTitle())} · sample app v1. Closet data stays on this device. Weather by Open-Meteo.com. AI try-on by fal.ai when configured.</p>`}
+ <p class="mut">${esc(dripTitle())} · sample app v1. Closet data stays on this device unless you turn on household sync. Weather by Open-Meteo.com. AI try-on by fal.ai when configured.</p>`}
 
 /* ===== Item editor ===== */
 let draft=null;
@@ -448,14 +485,38 @@ function editor(){const d=draft;const cpw=d.price>0?(d.price/Math.max(1,d.wears|
 function readEditor(){const d=draft;if(!d)return;const g=id=>$('#'+id);if(!g('f_name'))return;d.name=g('f_name').value.trim();d.cat=g('f_cat').value;d.color=g('f_color').value;d.warmth=+g('f_warmth').value;d.tags=g('f_tags').value.split(',').map(s=>s.trim()).filter(Boolean);d.brand=g('f_brand').value;d.price=g('f_price').value;d.wears=+g('f_wears').value||0;d.lastWorn=g('f_last').value;d.fav=g('f_fav').checked;d.outdated=g('f_out').checked;d.notes=g('f_notes').value}
 
 /* ===== Trip ===== */
-function tripFlow(){openSheet(`<div class="row sp"><h2 style="margin:0">Trip packing</h2><button class="btn sm sec" data-act="close">✕</button></div><label>Destination city</label><input id="t_city" placeholder="e.g. Miami"><div class="row" style="flex-wrap:nowrap"><div style="flex:1"><label>Start</label><input type="date" id="t_s" value="${today()}"></div><div style="flex:1"><label>Nights</label><input type="number" id="t_n" value="3" min="1" max="15"></div></div><button class="btn full" style="margin-top:12px" data-act="tripgo">Build list</button><div id="tripout"></div>`)}
-async function buildTrip(){const city=$('#t_city').value.trim(),n=Math.max(1,Math.min(15,+$('#t_n').value||3)),start=$('#t_s').value;if(!city)return toast('Enter a city');const out=$('#tripout');out.innerHTML='<p class="mut">Checking forecast…</p>';
- try{const g=await geocode(city);const f=await forecast(g.lat,g.lon,16);const idx=Math.max(0,f.daily.time.indexOf(start));const days=f.daily.time.slice(idx,idx+n+1);if(!days.length)throw new Error('Dates are beyond the 16-day forecast');
+function tripEndDefault(){const d=new Date();d.setDate(d.getDate()+3);return ymd(d)}
+function tripFlow(){const prev=S.trip||{};openSheet(`<div class="row sp"><h2 style="margin:0">Trip packing</h2><button class="btn sm sec" data-act="close">✕</button></div>
+ <label>Destination city</label><input id="t_city" placeholder="e.g. Miami" value="${esc(prev.city||'')}">
+ <div class="row" style="flex-wrap:nowrap"><div style="flex:1"><label>Start</label><input type="date" id="t_s" value="${esc(prev.start||today())}"></div>
+ <div style="flex:1"><label>End</label><input type="date" id="t_e" value="${esc(prev.end||tripEndDefault())}"></div></div>
+ <button class="btn full" style="margin-top:12px" data-act="tripgo">Build list from the forecast</button><div id="tripout"></div>`)}
+function daysBetween(a,b){const A=new Date(a+'T12:00'),B=new Date(b+'T12:00');return Math.round((B-A)/864e5)}
+async function buildTrip(){const city=$('#t_city').value.trim(),start=$('#t_s').value,end=$('#t_e').value||start;if(!city)return toast('Enter a city');if(!start||!end)return toast('Pick start and end dates');if(end<start)return toast('End date is before the start');
+ const n=Math.min(16,daysBetween(start,end)+1);if(n<1)return toast('Pick a date range');const out=$('#tripout');out.innerHTML='<p class="mut">Checking forecast…</p>';
+ try{const g=await geocode(city);const f=await forecast(g.lat,g.lon,16);const idx=Math.max(0,f.daily.time.indexOf(start));let days=f.daily.time.slice(idx,idx+n);if(!days.length)throw new Error('Those dates are beyond the 16-day forecast. Try closer dates.');
   const hi=Math.max(...f.daily.temperature_2m_max.slice(idx,idx+days.length)),lo=Math.min(...f.daily.temperature_2m_min.slice(idx,idx+days.length)),rain=f.daily.precipitation_probability_max.slice(idx,idx+days.length).some(p=>p>=50);
-  const pick=new Map();days.forEach((d,k)=>{const t=(f.daily.temperature_2m_max[idx+k]+f.daily.temperature_2m_min[idx+k])/2;const o=suggest(t,f.daily.precipitation_probability_max[idx+k]>=50,Object.keys(MOODS)[k%6],1)[0]||[];o.forEach(i=>pick.set(i.id,i))});
-  const L=[...pick.values()];out.innerHTML=`<div class="card" style="margin-top:12px"><b>${esc(g.place)}</b><p class="mut">${days.length} days · ${T(lo)} to ${T(hi)}${rain?' · rain likely':''} (live forecast)</p><div class="grid">${L.map(i=>thumb(i)).join('')}</div>
-  <h3>Also pack</h3><ul>${[rain&&'Umbrella or rain jacket',hi>=27&&'Sunglasses, sunscreen',lo<=5&&'Gloves, warm hat',`${days.length+1} sets underwear & socks`,'Sleepwear','Toiletries & chargers'].filter(Boolean).map(x=>`<li>${x}</li>`).join('')}</ul></div>`}
+  const used=new Set();const perDay=[];const pick=new Map();
+  days.forEach((d,k)=>{const tavg=(f.daily.temperature_2m_max[idx+k]+f.daily.temperature_2m_min[idx+k])/2;const wet=f.daily.precipitation_probability_max[idx+k]>=50;
+   const mood=Object.keys(MOODS)[k%Object.keys(MOODS).length];const o=(suggest(tavg,wet,mood,1,used)[0]||[]).filter(Boolean);
+   o.forEach(i=>{pick.set(i.id,i);if(['Tops','Bottoms','Dresses'].includes(i.cat))used.add(i.id)});perDay.push({date:d,hi:f.daily.temperature_2m_max[idx+k],lo:f.daily.temperature_2m_min[idx+k],code:f.daily.weather_code[idx+k],wet,items:o})});
+  const extras=[rain&&'Umbrella or rain jacket',hi>=27&&'Sunglasses and sunscreen',lo<=5&&'Gloves and a warm hat',`${days.length+1} sets of underwear and socks`,'Sleepwear','Toiletries and chargers'].filter(Boolean);
+  const checks=S.trip&&S.trip.key===city+'|'+start+'|'+end&&S.trip.checks?S.trip.checks:{};
+  const itemList=[...pick.values()];
+  const box=(id,label,img)=>`<label class="checkrow"><input type="checkbox" data-act="tripcheck" data-k="${esc(id)}" ${checks[id]?'checked':''}><span>${img?`<img src="${img}" alt="">`:''}<span>${label}</span></span></label>`;
+  const dayCards=perDay.map(d=>{const label=new Date(d.date+'T12:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+   return `<div class="card" style="margin-top:10px"><div class="row sp"><b>${label}</b><span class="mut">${T(d.lo)}–${T(d.hi)} · ${WMO(d.code)}${d.wet?' · rain likely':''}</span></div>
+    ${d.items.length?d.items.map(i=>box('i:'+i.id,esc(i.name)+(i.cat?' · '+i.cat:''),i.img)).join(''):'<p class="mut">Not enough clean clothes for a full look this day.</p>'}</div>`}).join('');
+  out.innerHTML=`<div class="card" style="margin-top:12px"><b>${esc(g.place)}</b><p class="mut">${days.length} day${days.length===1?'':'s'} · ${T(lo)} to ${T(hi)}${rain?' · rain likely':''} · live forecast from Open-Meteo</p></div>
+  ${dayCards}
+  <div class="card" style="margin-top:10px"><b>Packing checklist</b><p class="mut">Tap to check off what you have packed. ${itemList.length} closet item${itemList.length===1?'':'s'} plus extras.</p>
+  ${itemList.map(i=>box('i:'+i.id,esc(i.name)+' · '+i.cat,i.img)).join('')}
+  ${extras.map((x,i)=>box('x:'+i,x,'')).join('')}
+  </div>`;
+  S.trip={city,start,end,place:g.place,days:perDay.map(d=>({date:d.date,ids:d.items.map(i=>i.id)})),extras,checks,key:city+'|'+start+'|'+end};await kvSet('trip',S.trip)}
  catch(e){out.innerHTML=`<p class="mut">${esc(e.message)}</p>`}}
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-act="tripcheck"]');if(!t)return;e.stopImmediatePropagation();
+ if(!S.trip)S.trip={checks:{}};S.trip.checks=S.trip.checks||{};S.trip.checks[t.dataset.k]=t.checked;await kvSet('trip',S.trip)},true);
 
 /* ===== Day sheet ===== */
 function dayFlow(key){const p=S.plans[key],h=S.history.filter(x=>x.date===key);
@@ -508,10 +569,11 @@ document.addEventListener('click',async e=>{const t=e.target.closest('[data-tab]
   try{draft.img=A==='aicut'?await aiCutout(draft.orig||draft.img):await quickCutout(draft.orig||draft.img);draft.color=await dominantColor(draft.img);editor()}catch(err){m.textContent='Background removal failed ('+(err.message||err)+'). Try Quick cutout or keep the photo.'}return}
  if(A==='orig'){readEditor();if(draft.orig)draft.img=draft.orig;return editor()}
  if(A==='saveitem'){readEditor();if(!draft.name)draft.name=draft.color+' '+draft.cat.replace(/s$/,'').toLowerCase();delete draft._new;await saveItem(draft);closeSheet();toast('Saved');return render()}
- if(A==='delitem'){if(!confirm('Delete this item?'))return;S.items=S.items.filter(i=>i.id!==draft.id);await del('items',draft.id);S.dress=S.dress.filter(d=>d.id!==draft.id);closeSheet();return render()}
+ if(A==='delitem'){if(!confirm('Delete this item?'))return;const dead=draft.id;S.items=S.items.filter(i=>i.id!==dead);await del('items',dead);S.dress=S.dress.filter(d=>d.id!==dead);if(S.settings.syncCode){S.syncTomb=S.syncTomb||{};S.syncTomb[dead]={id:dead,deleted:true,updated:Date.now()};await kvSet('syncTomb',S.syncTomb);queueSync()}closeSheet();return render()}
  if(A==='wearone'){readEditor();await saveItem(draft);await logWear([draft.id]);closeSheet();return render()}
  if(A==='dressone'){readEditor();await saveItem(draft);const id=draft.id;closeSheet();S.tab='dress';render();return addToBoard(id)}
- if(A==='szm'||A==='szp'){const k=lastPc??S.dress.length-1;if(k<0||!S.dress[k])return;S.dress[k].w=Math.max(40,Math.min(320,S.dress[k].w+(A==='szp'?15:-15)));kvSet('dress',S.dress);return render()}
+ if(A==='szm'||A==='szp'){const k=lastPc??S.dress.length-1;if(k<0||!S.dress[k])return;S.dress[k].w=Math.max(40,Math.min(320,S.dress[k].w+(A==='szp'?15:-15)));kvSet('dress',S.dress);persistBoardFit(k);return render()}
+ if(A==='bfit_reset'){const k=lastPc??S.dress.length-1;const d=S.dress[k];if(!d)return;const it=item(d.id);if(it){delete it.fitBoard;put('items',it)}const b=$('#board');const W=b?.clientWidth||340,H=b?.clientHeight||440;const fresh=applySavedBoardFit(d.id,W,H);Object.assign(d,fresh);kvSet('dress',S.dress);return render()}
  if(A==='clearb'){S.dress=[];kvSet('dress',S.dress);return render()}
  if(A==='saveb'){const name=prompt('Name this outfit','My outfit '+(S.outfits.length+1));if(name===null)return;const o={id:uid(),name:name||'Outfit',items:S.dress.map(d=>d.id),layout:S.dress,created:Date.now()};S.outfits.unshift(o);await put('outfits',o);toast('Outfit saved');return render()}
  if(A==='wearb'){await logWear(S.dress.map(d=>d.id));return render()}
@@ -576,7 +638,7 @@ document.addEventListener('change',async e=>{const id=e.target.id;
 });
 
 /* ===== Boot ===== */
-async function boot(reload){if(!reload)await openDB();S.items=(await all('items')).sort((a,b)=>b.created-a.created);S.outfits=(await all('outfits')).sort((a,b)=>b.created-a.created);S.plans=await kvGet('plans',{});S.history=await kvGet('history',[]);S.profile=Object.assign(S.profile,await kvGet('profile',{}));if(S.profile.heightIn==null||S.profile.heightIn==='')S.profile.heightIn=66;if(!S.profile.measUnit)S.profile.measUnit='in';S.settings=Object.assign(S.settings,await kvGet('settings',{}));S.dress=await kvGet('dress',[]);S.dismissed=await kvGet('dismissed',[]);S.dressMode=await kvGet('dressMode','board');S.swipe=await kvGet('swipe',{t:0,b:0});const qn=takeNameQuery();if(qn&&!dripName()){S.profile.name=qn;await kvSet('profile',S.profile)}render();loadWeather()}
+async function boot(reload){if(!reload)await openDB();S.items=(await all('items')).sort((a,b)=>b.created-a.created);S.outfits=(await all('outfits')).sort((a,b)=>b.created-a.created);S.plans=await kvGet('plans',{});S.history=await kvGet('history',[]);S.profile=Object.assign(S.profile,await kvGet('profile',{}));if(S.profile.heightIn==null||S.profile.heightIn==='')S.profile.heightIn=66;if(!S.profile.measUnit)S.profile.measUnit='in';S.settings=Object.assign(S.settings,await kvGet('settings',{}));S.dress=await kvGet('dress',[]);S.dismissed=await kvGet('dismissed',[]);S.dressMode=await kvGet('dressMode','board');S.swipe=await kvGet('swipe',{t:0,b:0});S.trip=await kvGet('trip',null);S.syncTomb=await kvGet('syncTomb',{});const qn=takeNameQuery();if(qn&&!dripName()){S.profile.name=qn;await kvSet('profile',S.profile)}const qs=takeSyncQuery();if(qs){S.settings.syncCode=qs;await kvSet('settings',S.settings)}render();loadWeather();if(S.settings.syncCode)syncPull().catch(e=>toast('Sync: '+(e.message||e)))}
 boot().catch(e=>{$('#view').innerHTML='<div class="card">Storage unavailable: '+esc(e.message)+'. Private browsing can block it.</div>'});
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
@@ -600,7 +662,7 @@ const lid=k=>'swg_'+k.replace(':','_');
 function buyBar(ids){const L=ids.map(item).filter(i=>i&&isShop(i)&&safeUrl(i.buyUrl));return L.length?`<div class="card buybar">${L.map(i=>`<div class="row sp"><span>🛍 ${esc(i.name)}${i.price?' · $'+esc(i.price):''}</span><a class="btn sm" href="${esc(safeUrl(i.buyUrl))}" target="_blank" rel="noopener sponsored">Buy</a></div>`).join('')}</div>`:''}
 function modeTabs(){const m=S.dressMode||'board';return `<div class="seg" style="display:flex;gap:6px;margin:0 0 10px"><button class="chip ${m==='board'?'on':''}" data-act="mode_board">Board</button><button class="chip ${m==='swipe'?'on':''}" data-act="mode_swipe">Swipe (free)</button>${m==='swipe'?'<button class="chip" data-act="sw_shuffle">🔀 Shuffle</button>':''}</div>${poseChips()}${m==='board'?buyBar(S.dress.map(d=>d.id)):''}`}
 function posed(k,f){const D=k.length===1?poseDelta(k,S.lastPose):{};return{x:f.x+(D.dx||0),y:f.y+(D.dy||0),s:f.s+(D.ds||0)}}
-function swLayer(i,k,z){if(!i)return '';const f=posed(k,swFit(i));return `<img class="swg" id="${lid(k)}" src="${swImg(i)}" alt="" draggable="false" style="left:${f.x}%;top:${f.y}%;width:${f.s}%;z-index:${z}">`}
+function swLayer(i,k,z){if(!i)return '';const f=posed(k,swFit(i));return `<img class="swg" id="${lid(k)}" src="${swImg(i)}" alt="" draggable="false" style="left:${f.x}%;top:${f.y}%;width:${f.s}%;z-index:${z};transform:translate(-50%,-50%) rotate(${f.r||0}deg)">`}
 function swAccs(){S.swAcc=(S.swAcc||[]).filter(id=>item(id));return S.swAcc.map(item)}
 function vSwipe(){const t=swCur('t'),b=swCur('b'),s=swCur('s');const adj=S.swAdj||'';const accs=swAccs();
  const pos=(z,i)=>{const L=swList(z);return i?`${isShop(i)?'🛍 ':''}${esc(i.name||i.cat)} · ${L.indexOf(i)+1}/${L.length}`:(L.length?`None · ${L.length+1}/${L.length+1}`:'No '+ZN[z])};
@@ -616,13 +678,13 @@ function vSwipe(){const t=swCur('t'),b=swCur('b'),s=swCur('s');const adj=S.swAdj
  <div class="row"><button class="btn sm sec ${adj==='t'?'on':''}" data-act="sw_adj" data-k="t" ${t?'':'disabled'}>Adjust top</button><button class="btn sm sec ${adj==='b'?'on':''}" data-act="sw_adj" data-k="b" ${b?'':'disabled'}>Adjust bottom</button><button class="btn sm sec ${adj==='s'?'on':''}" data-act="sw_adj" data-k="s" ${s?'':'disabled'}>Adjust shoes</button>
  ${accs.map(a=>`<button class="btn sm sec ${adj==='a:'+a.id?'on':''}" data-act="sw_adj" data-k="a:${a.id}">Adjust ${esc(a.name||'accessory')}</button>`).join('')}</div>
  <div class="row" style="margin-top:6px"><button class="btn sm" data-act="sw_save" ${t||b||s||accs.length?'':'disabled'}>Save outfit</button><button class="btn sm sec" data-act="sw_wear" ${t||b||s?'':'disabled'}>Wear today</button>${'DeviceMotionEvent' in window&&!S.shakeOn?'<button class="btn sm sec" data-act="sw_shake">Enable shake</button>':''}</div>
- ${f?`<div class="card" style="margin-top:10px"><label>Left/right</label><input type="range" id="swr_x" min="0" max="100" step="0.5" value="${f.x}"><label>Up/down</label><input type="range" id="swr_y" min="0" max="100" step="0.5" value="${f.y}"><label>Size</label><input type="range" id="swr_s" min="5" max="120" step="0.5" value="${f.s}"><div class="row" style="margin-top:8px"><button class="btn sm" data-act="sw_fit_save">Save fit for this item</button><button class="btn sm sec" data-act="sw_fit_reset">Reset</button><button class="btn sm sec" data-act="sw_adj_done">Done</button></div></div>`:''}
+ ${f?`<div class="card" style="margin-top:10px"><label>Left/right</label><input type="range" id="swr_x" min="0" max="100" step="0.5" value="${f.x}"><label>Up/down</label><input type="range" id="swr_y" min="0" max="100" step="0.5" value="${f.y}"><label>Size</label><input type="range" id="swr_s" min="5" max="120" step="0.5" value="${f.s}"><label>Rotate</label><input type="range" id="swr_r" min="-180" max="180" step="1" value="${f.r||0}"><div class="row" style="margin-top:8px"><button class="btn sm" data-act="sw_fit_save">Save fit for this item</button><button class="btn sm sec" data-act="sw_fit_reset">Reset</button><button class="btn sm sec" data-act="sw_adj_done">Done</button></div></div>`:''}
  ${buyBar([t,b,s,...accs].filter(Boolean).map(i=>i.id))}
  <h3>Accessories <span class="mut" style="font-weight:400">tap to add/remove</span></h3>${allAcc.length?`<div class="strip">${allAcc.map(i=>`<button class="accb ${S.swAcc.includes(i.id)?'sel':''}" data-act="sw_acc" data-k="${i.id}" aria-label="${esc(i.name)}"><img src="${swImg(i)}" alt=""></button>`).join('')}</div>`:'<p class="mut">Add bags, hats or jewelry as Accessories in Closet.</p>'}
  <div class="card" style="margin-top:10px"><div class="row sp"><b>Cutouts</b><span class="badge">free</span></div><p class="mut" style="margin:6px 0" id="swcutmsg">${need?need+' item(s) still have a background.':'All swipe items have cutouts.'} Removal runs on this phone (first run downloads a ~40 MB model once).</p><button class="btn sm sec" data-act="sw_cutall" ${need?'':'disabled'}>Make cutouts</button></div>
  <p class="mut" style="margin-top:10px">Want a realistic fit? Switch to Board and use “Try on for real” (~4¢).</p>
  ${S.items.length?'':'<div class="card mut">Add clothes in the Closet tab first.</div>'}`}
-function swSetFit(k,f0){const f=posed(k,f0);const g=document.getElementById(lid(k));if(g){g.style.left=f.x+'%';g.style.top=f.y+'%';g.style.width=f.s+'%'}}
+function swSetFit(k,f0){const f=posed(k,f0);const g=document.getElementById(lid(k));if(g){g.style.left=f.x+'%';g.style.top=f.y+'%';g.style.width=f.s+'%';g.style.transform='translate(-50%,-50%) rotate('+(f.r||0)+'deg)'}}
 let swLive=null;
 const zoneAt=fy=>fy<0.46?'t':fy<0.82?'b':'s';
 function initSwipe(){const st=$('#swstage');if(!st)return;const P=new Map();let g=null;
@@ -631,9 +693,9 @@ function initSwipe(){const st=$('#swstage');if(!st)return;const P=new Map();let 
   if(adj){const i=swCur(adj);if(!i)return;const f=swLive&&swLive.id===i.id?swLive.f:swFit(i);swLive={id:i.id,z:adj,f:{...f}};g={mode:'adj',r,f0:{...swLive.f},p0:[...P.values()].map(p=>({...p})),d0:0}}
   else g={mode:'sw',z:zoneAt((e.clientY-r.top)/r.height),x0:e.clientX,y0:e.clientY}});
  st.addEventListener('pointermove',e=>{if(!P.has(e.pointerId)||!g)return;P.set(e.pointerId,{x:e.clientX,y:e.clientY});e.preventDefault();
-  if(g.mode==='adj'){const pts=[...P.values()];if(pts.length>=2){const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);if(!g.d0){g.d0=d;g.f0={...swLive.f}}swLive.f.s=Math.max(5,Math.min(120,g.f0.s*d/g.d0))}
+  if(g.mode==='adj'){const pts=[...P.values()];if(pts.length>=2){const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);const ang=Math.atan2(pts[1].y-pts[0].y,pts[1].x-pts[0].x);if(!g.d0){g.d0=d;g.a0=ang;g.f0={...swLive.f}}swLive.f.s=Math.max(5,Math.min(120,g.f0.s*d/g.d0));swLive.f.r=Math.max(-180,Math.min(180,(g.f0.r||0)+(ang-g.a0)*180/Math.PI))}
    else{const p0=g.p0[0]||pts[0];swLive.f.x=Math.max(0,Math.min(100,g.f0.x+(pts[0].x-p0.x)/g.r.width*100));swLive.f.y=Math.max(0,Math.min(100,g.f0.y+(pts[0].y-p0.y)/g.r.height*100))}
-   swSetFit(swLive.z,swLive.f);['x','y','s'].forEach(k=>{const s=$('#swr_'+k);if(s)s.value=swLive.f[k]})}});
+   swSetFit(swLive.z,swLive.f);['x','y','s','r'].forEach(k=>{const s=$('#swr_'+k);if(s)s.value=swLive.f[k]||0})}});
  const up=e=>{if(!P.has(e.pointerId))return;P.delete(e.pointerId);if(!g)return;
   if(g.mode==='sw'){const dx=e.clientX-g.x0,dy=e.clientY-g.y0;if(Math.abs(dx)>40&&Math.abs(dx)>Math.abs(dy)*1.3)swStep(g.z,dx<0?1:-1);g=null}
   else{if(P.size===0)g=null;else{g.p0=[...P.values()].map(p=>({...p}));g.f0={...swLive.f};g.d0=0}}};
@@ -674,7 +736,7 @@ document.addEventListener('click',async e=>{const t=e.target.closest('[data-act]
  if(A==='sw_wear'){const ids=swIds().filter(id=>!isShop(item(id)));if(ids.length)await logWear(ids);return render()}
  if(A==='sw_cutall'){const L=S.items.filter(i=>wantsCut(i)&&!i.cut);t.disabled=true;const msg=$('#swcutmsg');let k=0;for(const i of L){k++;const say=s=>{if(msg)msg.textContent=`${k}/${L.length}: ${s}`};try{i.cut=await makeCutout(i.orig||i.img,say);await put('items',i)}catch(err){}}toast('Cutouts done');return render()}
 },true);
-document.addEventListener('input',e=>{const m=e.target.id&&e.target.id.match(/^swr_([xys])$/);if(!m)return;const i=swCur(S.swAdj);if(!i)return;if(!swLive||swLive.id!==i.id)swLive={id:i.id,z:S.swAdj,f:swFit(i)};swLive.f[m[1]]=+e.target.value;swSetFit(S.swAdj,swLive.f)});
+document.addEventListener('input',e=>{const m=e.target.id&&e.target.id.match(/^swr_([xysr])$/);if(!m)return;const i=swCur(S.swAdj);if(!i)return;if(!swLive||swLive.id!==i.id)swLive={id:i.id,z:S.swAdj,f:swFit(i)};swLive.f[m[1]]=+e.target.value;swSetFit(S.swAdj,swLive.f)});
 
 /* ===== Fast camera capture + auto-sort ===== */
 const QCATS=['Tops','Bottoms','Shoes','Accessories','Outerwear','Dresses'];
@@ -741,7 +803,7 @@ function sharedList(){const L=S.shared||[];openSheet(`<div class="row sp"><h2 st
  ${L.length?L.map(s=>`<div class="card"><div class="row sp"><b>${esc(s.kind==='suggestion'?'Outfit idea from '+s.owner:poss(s.owner)+' '+(s.kind==='wishlist'?'gift ideas':s.kind))}</b><span><button class="btn sm sec" data-act="x_open" data-k="${s.id}">Open</button> <button class="btn sm sec" data-act="x_sdel" data-k="${s.id}">✕</button></span></div><p class="mut">${s.items.length} item(s) · ${new Date(s.received).toLocaleDateString()}</p></div>`).join(''):'<p class="mut">Nothing yet. When someone sends you a Britts Drip link or file, open it here.</p>'}
  <label class="btn sec full" style="text-align:center;margin-top:8px">Import shared file<input type="file" id="x_imp" accept=".bdrip,.json,application/json,application/octet-stream" hidden></label>`)}
 let xSel=new Set();
-function miniStage(items){return `<div class="ministage">${avatarSVG(S.profile.skin)}${items.map(i=>{const f=i.cat==='Accessories'?accDef(i):(SW_DEF()[i.cat]||SW_DEF()[SW_ZONE(i)]||{x:50,y:40,s:30});return i.img?`<img src="${i.img}" style="left:${f.x}%;top:${f.y}%;width:${f.s}%">`:''}).join('')}</div>`}
+function miniStage(items){return `<div class="ministage">${avatarSVG(S.profile.skin)}${items.map(i=>{const f=i.cat==='Accessories'?accDef(i):(SW_DEF()[i.cat]||SW_DEF()[SW_ZONE(i)]||{x:50,y:40,s:30});return i.img?`<img src="${i.img}" style="left:${f.x}%;top:${f.y}%;width:${f.s}%;transform:translate(-50%,-50%) rotate(${(i.fit&&i.fit.r)||0}deg)">`:''}).join('')}</div>`}
 function openShared(id){const s=(S.shared||[]).find(x=>x.id===id);if(!s)return;S.xOpen=id;const sel=s.items.filter(i=>xSel.has(i.id));
  const sw=i=>i.img?`<img src="${i.img}" alt="">`:`<div class="sw" style="background:${esc(COLORS[i.color]||'#bbb')}"></div>`;
  if(s.kind==='wishlist')return openSheet(`<div class="row sp"><h2 style="margin:0">${esc(poss(s.owner))} gift ideas</h2><button class="btn sm sec" data-act="close">✕</button></div><span class="badge">read-only</span>
@@ -904,3 +966,64 @@ document.addEventListener('click',async e=>{const t=e.target.closest('[data-act^
  if(A==='pav_del'){if(!confirm('Delete your photo and AI avatars from this device?'))return;['avPhoto','avCut','avT','avAI','avAIcut','avAIt'].forEach(k=>delete p[k]);p.avMode='drawn';await kvSet('profile',p);return render()}
 },true);
 document.addEventListener('change',async e=>{if(e.target.id!=='pav_file')return;e.stopImmediatePropagation();const f=e.target.files[0];if(!f)return;const im=await fileToImg(f);await startAvatarFrom(scale(im,1100).toDataURL('image/jpeg',.9),'photo')},true);
+
+
+/* ===== Household closet sync (opt-in, Cloudflare Worker KV) ===== */
+const SHARE_ALPH='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function normShareCode(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'')}
+function fmtShareCode(s){s=normShareCode(s);return s.length===10?s.slice(0,5)+'-'+s.slice(5):s}
+function syncShareUrl(code){return location.origin+location.pathname+'?sync='+encodeURIComponent(normShareCode(code))}
+async function compressForSync(src){if(!src||typeof src!=='string'||!src.startsWith('data:'))return src||'';
+ try{const im=await loadImg(src);let c=scale(im,480,'image/png');let out='';try{out=c.toDataURL('image/webp',.72)}catch(e){out=''}if(!out.startsWith('data:image/webp'))out=c.toDataURL('image/png');
+  if(out.length>220000){c=scale(im,360,'image/png');try{out=c.toDataURL('image/webp',.65)}catch(e){out=c.toDataURL('image/png')}if(!out.startsWith('data:image/webp')&&!out.startsWith('data:image/png'))out=c.toDataURL('image/png')}
+  return out}catch(e){return src}}
+async function snapshotForPush(){const items={};for(const it of S.items){const row={...it};row.img=await compressForSync(it.img||it.cut||'');delete row.orig;delete row.cut;delete row.cutFailed;row.updated=it.updated||it.created||0;items[it.id]=row}
+ for(const [id,tomb] of Object.entries(S.syncTomb||{})){if(!items[id]||(tomb.updated||0)>=(items[id].updated||0))items[id]=tomb}
+ const outfits={};for(const o of S.outfits){const row={...o};delete row.aiImage;row.updated=o.updated||o.created||0;outfits[o.id]=row}
+ return {items,outfits,updated:Date.now()}}
+function applySnapshot(snap){if(!snap)return{added:0,updated:0,removed:0};
+ const info={added:0,updated:0,removed:0};const tombs=S.syncTomb||{};
+ const incoming=snap.items||{};
+ for(const [id,row] of Object.entries(incoming)){
+  if(row.deleted){const cur=item(id);if(cur&&(row.updated||0)>=(cur.updated||0)){S.items=S.items.filter(i=>i.id!==id);del('items',id);info.removed++;tombs[id]=row}continue}
+  const cur=item(id);
+  if(!cur){const it={...row};S.items.unshift(it);put('items',it);info.added++;if(tombs[id])delete tombs[id]}
+  else if((row.updated||0)>=(cur.updated||0)){Object.assign(cur,row);put('items',cur);info.updated++;if(tombs[id])delete tombs[id]}
+ }
+ const haveO=new Map(S.outfits.map(o=>[o.id,o]));
+ for(const [id,row] of Object.entries(snap.outfits||{})){
+  if(row.deleted){if(haveO.has(id)&&(row.updated||0)>=(haveO.get(id).updated||haveO.get(id).created||0)){S.outfits=S.outfits.filter(o=>o.id!==id);del('outfits',id)}continue}
+  const cur=haveO.get(id);
+  if(!cur){S.outfits.unshift({...row});put('outfits',row)}
+  else if((row.updated||0)>=(cur.updated||cur.created||0)){Object.assign(cur,row);put('outfits',cur)}
+ }
+ S.syncTomb=tombs;kvSet('syncTomb',tombs);return info}
+async function syncPost(path,body){const base=workerBase();if(!base)throw new Error('Worker URL missing');
+ const r=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('Sync failed ('+r.status+')'));return j}
+async function syncCreate(){const j=await syncPost('/sync/create',{});S.settings.syncCode=j.code;await kvSet('settings',S.settings);toast('Household code created');return j}
+async function syncPush(){if(!S.settings.syncCode)throw new Error('No household code');const snapshot=await snapshotForPush();
+ const j=await syncPost('/sync/push',{code:S.settings.syncCode,snapshot});if(j.snapshot)applySnapshot(j.snapshot);S.settings.syncAt=Date.now();await kvSet('settings',S.settings);return j}
+async function syncPull(){if(!S.settings.syncCode)throw new Error('No household code');
+ const j=await syncPost('/sync/pull',{code:S.settings.syncCode});const info=applySnapshot(j.snapshot);S.settings.syncAt=Date.now();await kvSet('settings',S.settings);return info}
+let _syncQ=null,_syncTimer=null;
+function queueSync(){clearTimeout(_syncTimer);_syncTimer=setTimeout(()=>{_syncQ=(_syncQ||Promise.resolve()).then(()=>syncPush()).catch(e=>console.warn('sync',e))},1500)}
+function syncCard(){const code=S.settings.syncCode||'';const when=S.settings.syncAt?new Date(S.settings.syncAt).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+ return `<h3>Household sync</h3><div class="card" id="synccard">
+ <p class="mut">Optional. By default your closet stays only on this phone. If you create or join a household, closet photos are stored on Cloudflare under the share code so other phones can pull them.</p>
+ ${code?`<p>Share code <code class="syncode">${esc(fmtShareCode(code))}</code></p>
+  <p class="mut">${when?'Last synced '+when+'. ':''}Anyone with this code can view and update the shared closet.</p>
+  <div class="row" style="margin-top:8px"><button class="btn sm" data-act="sync_now">Sync now</button><button class="btn sm sec" data-act="sync_copy">Copy link</button><button class="btn sm sec" data-act="sync_leave">Leave</button></div>`:
+  `<label>Have a code?</label><input id="sync_join" placeholder="XXXXX-XXXXX" autocomplete="off">
+  <div class="row" style="margin-top:8px"><button class="btn sm" data-act="sync_create">Create a household</button><button class="btn sm sec" data-act="sync_join">Join</button></div>`}
+ <p class="mut" id="sync_msg" style="margin:8px 0 0"></p></div>`}
+const _vMeSync=vMe;vMe=function(){const h=_vMeSync();const i=h.lastIndexOf('<p class="mut">');return i>=0?h.slice(0,i)+syncCard()+h.slice(i):h+syncCard()};
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-act^="sync_"]');if(!t)return;e.stopImmediatePropagation();const A=t.dataset.act,msg=$('#sync_msg');
+ const say=s=>{if(msg)msg.textContent=s};t.disabled=true;
+ try{
+  if(A==='sync_create'){say('Creating a household code…');await syncCreate();await syncPush();toast('Household ready. Share the code or link.');return render()}
+  if(A==='sync_join'){const c=normShareCode(($('#sync_join')&&$('#sync_join').value)||'');if(c.length<8)return toast('Enter the full share code');S.settings.syncCode=c;await kvSet('settings',S.settings);say('Joining and pulling the closet…');const info=await syncPull();toast(`Joined. ${info.added} new, ${info.updated} updated.`);return render()}
+  if(A==='sync_now'){say('Syncing…');await syncPush();const info=await syncPull();toast(`Synced. ${info.added} new, ${info.updated} updated.`);return render()}
+  if(A==='sync_copy'){const url=syncShareUrl(S.settings.syncCode);try{await navigator.clipboard.writeText(url);toast('Link copied')}catch(err){prompt('Copy this link',url)}return}
+  if(A==='sync_leave'){if(!confirm('Leave this household? This phone will keep its local closet, but it will stop syncing.'))return;S.settings.syncCode='';S.settings.syncAt=0;await kvSet('settings',S.settings);toast('Left household. Closet stays on this phone.');return render()}
+ }catch(err){say('');toast(err.message||'Sync failed')}finally{t.disabled=false}},true);

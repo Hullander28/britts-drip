@@ -20,6 +20,7 @@ const COLORS={Black:'#111',White:'#f5f5f5',Gray:'#9ca3af',Navy:'#1e3a8a',Blue:'#
 const $=s=>document.querySelector(s);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const poss=n=>{n=String(n||'').trim();return !n?'':/s$/i.test(n)?n+"'":n+"'s"};
 const dripName=()=>(S.profile.name||'').trim().slice(0,40);
+const aiOK=()=>{const n=dripName().toLowerCase();return !n||/^britt/.test(n)};// AI try-on + illustrated avatar: Britts Drip only
 const dripTitle=()=>{const n=dripName();return n?poss(n)+' Drip':'Britts Drip'};
 function applyBrand(){const t=dripTitle(),n=dripName();document.title=t;const b=$('.brand');if(b)b.innerHTML=n?`${esc(poss(n))} <b>Drip</b>`:`Britts <b>Drip</b>`;const m=document.querySelector('meta[name=apple-mobile-web-app-title]');if(m)m.content=t}
 function takeNameQuery(){try{const u=new URL(location.href);if(!u.searchParams.has('name'))return'';const raw=(u.searchParams.get('name')||'').trim().slice(0,40);u.searchParams.delete('name');const qs=u.searchParams.toString();history.replaceState(null,'',u.pathname+(qs?'?'+qs:'')+u.hash);return raw}catch(e){return''}}
@@ -364,11 +365,11 @@ function vDress(){if(S.dressMode==='swipe')return vSwipe();const picked=S.dress.
  ${S.dress.map((d,k)=>{const i=item(d.id);return i?`<img class="pc" src="${i.img}" data-pc="${k}" style="left:${d.x}px;top:${d.y}px;width:${d.w}px;z-index:${k+2};transform:rotate(${d.r||0}deg)">`:''}).join('')}</div>
  <p class="mut">Drag a piece to move it. Pinch to resize and rotate, or use the sliders after you tap a piece. Fit is remembered for each item.</p>
  <div id="bfit"></div><div class="row"><button class="btn sm sec" data-act="szm">−</button><button class="btn sm sec" data-act="szp">+</button><button class="btn sm sec" data-act="clearb">Clear</button><button class="btn sm" data-act="saveb" ${picked.length?'':'disabled'}>Save outfit</button><button class="btn sm sec" data-act="wearb" ${picked.length?'':'disabled'}>Wear today</button></div>
- <div class="card" style="margin-top:10px"><div class="row sp"><b>Try on for real</b><span class="badge">~$0.04/image</span></div>
+ ${aiOK()?` <div class="card" style="margin-top:10px"><div class="row sp"><b>Try on for real</b><span class="badge">~$0.04/image</span></div>
  <p class="mut" style="margin:6px 0">Uses your body photo and each selected garment. Multiple pieces are sent one after another (~4¢ each). ${workerBase()?'Worker connected.':'No Worker URL set — configure it in Me (app still works without AI).'}</p>
  <p class="mut"><b>Consent:</b> When you tap below, your body photo and garment photo(s) are sent to your try-on Worker, which forwards them to <b>fal.ai</b> for processing. Do not use photos of other people without permission.</p>
  <button class="btn full" data-act="aitryon" ${picked.length?'':'disabled'}>✨ Try on for real${picked.length?` (${picked.length} piece${picked.length>1?'s':''})`:''}</button>
- <div id="aiload" class="mut" style="display:none;margin-top:8px">Generating… this can take 10–40s per piece.</div></div>
+ <div id="aiload" class="mut" style="display:none;margin-top:8px">Generating… this can take 10–40s per piece.</div></div>`:''}
  ${CATS.map(c=>{const L=S.items.filter(i=>i.cat===c);return L.length?`<h3>${c}</h3><div class="strip">${L.map(i=>thumb(i,S.dress.some(d=>d.id===i.id)?'sel':'')).join('')}</div>`:''}).join('')}
  ${S.items.length?'':'<div class="card mut">Add clothes in the Closet tab first.</div>'}
  <h3>Saved outfits</h3>${S.outfits.length?S.outfits.map(o=>`<div class="card"><div class="row sp"><b>${esc(o.name)}</b><span><button class="btn sm sec" data-loado="${o.id}">Load</button> <button class="btn sm sec" data-plano="${o.id}">Plan</button> <button class="btn sm sec" data-delo="${o.id}">✕</button></span></div>${o.aiImage?`<img src="${o.aiImage}" class="prev" style="margin-top:8px;max-height:220px" alt="AI try-on">`:''}<div class="strip" style="margin-top:8px">${o.items.map(item).filter(Boolean).map(i=>thumb(i)).join('')}</div></div>`).join(''):'<p class="mut">No saved outfits yet.</p>'}`}
@@ -445,9 +446,9 @@ function vMe(){const s=S.settings,p=S.profile;const tw=S.items.reduce((a,i)=>a+(
  <div class="tog"><span>Dark mode</span><input type="checkbox" id="dark" style="width:auto" ${s.dark?'checked':''}></div>
  <div class="tog"><span>Temperature</span><span class="chips"><button class="chip ${s.units==='F'?'on':''}" data-units="F">°F</button><button class="chip ${s.units==='C'?'on':''}" data-units="C">°C</button></span></div>
  <div class="tog"><span>Weather: ${esc(s.place||'not set')}</span><button class="btn sm sec" data-act="resetwx">Change</button></div>
- <label>AI try-on Worker URL</label>
+ ${aiOK()?` <label>AI try-on Worker URL</label>
  <input id="tryon_url" placeholder="https://britts-drip-tryon.YOUR.workers.dev" value="${esc(s.tryonWorker||'')}">
- <p class="mut">Leave blank to disable AI try-on. Local mock: <code>http://127.0.0.1:8788</code>. Live: your Cloudflare Worker. Cost ~4¢ per garment image via fal.ai.</p>
+ <p class="mut">Leave blank to disable AI try-on. Local mock: <code>http://127.0.0.1:8788</code>. Live: your Cloudflare Worker. Cost ~4¢ per garment image via fal.ai.</p>`:''}
  <div class="row" style="margin-top:8px"><button class="btn sm sec" data-act="saveworker">Save Worker URL</button><button class="btn sm sec" data-act="pingworker">Test connection</button></div>
  <div class="row" style="margin-top:12px"><button class="btn sm sec" data-act="export">Export closet (JSON)</button><label class="btn sm sec" style="margin:0;color:var(--tx)">Import JSON<input type="file" accept="application/json,.json" id="imp" hidden></label></div>
  <button class="btn dng full" style="margin-top:14px" data-act="wipe">Delete all data</button></div>
@@ -583,7 +584,7 @@ document.addEventListener('click',async e=>{const t=e.target.closest('[data-tab]
  if(A==='delbody'){S.profile.photo='';S.profile.useOnBoard=false;await kvSet('profile',S.profile);return render()}
  if(A==='resetwx'){Object.assign(S.settings,{lat:null,lon:null,place:''});S.wx=null;await kvSet('settings',S.settings);S.tab='today';return render()}
  if(A==='export'){const data={app:'britts-drip',version:1,exported:new Date().toISOString(),items:S.items,outfits:S.outfits,plans:S.plans,history:S.history,profile:{...S.profile,photo:''}};const b=new Blob([JSON.stringify(data)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='britts-drip-closet-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();return toast('Exported (body photo not included; your name is in the file but import keeps the recipient\'s name)')}
- if(A==='aitryon'){
+ if(A==='aitryon'){if(!aiOK())return toast('AI try-on is only on Britts Drip');
   if(!workerBase()){toast('Set Worker URL in Me first (or use local mock http://127.0.0.1:8788)');S.tab='me';return render()}
   if(!S.profile.photo){toast('Add a body photo in Me first');S.tab='me';return render()}
   if(!S.dress.length)return toast('Add garments to the board first');
@@ -947,7 +948,7 @@ async function ingestBodyPhoto(src){toast('Saving your photo…');const p=S.prof
  try{const cut=await makeCutout(src);const t=await autoAlign(cut);p.avCut=cut;p.avT=t;p.avPhoto=await renderAligned(cut,t)}catch(e){p.avPhoto=src}
  if(!p.avAI)p.avMode='photo';await kvSet('profile',p);toast('Photo saved. Pick a style, then make your illustrated avatar.');return render()}
 let _avConsented=false;
-async function stylize(){const base=workerBase();if(!base)return toast('Set the Worker URL in Me first');const p=S.profile;const src=p.avSrc||p.avPhoto||p.photo;if(!src)return toast('Take or upload a full-body photo first');
+async function stylize(){if(!aiOK())return;const base=workerBase();if(!base)return toast('Set the Worker URL in Me first');const p=S.profile;const src=p.avSrc||p.avPhoto||p.photo;if(!src)return toast('Take or upload a full-body photo first');
  const style=curStyle();const consent=$('#pav_consent');if(!_avConsented&&consent&&!consent.checked)return toast('Check the box to consent to sending your photo');
  if(!confirm('Send this full-body photo to your Worker, then to fal.ai, to make an illustrated avatar? Cost is about 2.5¢. The photo is used only to process this request.'))return;
  _avConsented=true;
@@ -978,7 +979,7 @@ function avatarCard(){const p=S.profile,k=avKind(),style=curStyle();const srcPho
  const badge=k==='ai'?'Illustrated':k==='photo'?'Photo ready':k==='legacy'?'Body photo':'Drawn fallback';
  const prev=k==='drawn'?avatarSVG(p.skin):`<img src="${k==='photo'?p.avPhoto:k==='ai'?p.avAI:p.photo}" style="width:100%;height:100%;object-fit:contain" alt="">`;
  return `<div class="card" id="avcard"><div class="row sp"><b>My avatar</b><span class="badge">${badge}</span></div>
- <p class="mut" id="pav_hlabel" style="text-align:center;margin:6px 0 0">${fmtHeight(heightIn(p))}${k==='drawn'?' · temporary drawn figure until you make an illustrated avatar':' · clothes line up on this standing pose'}</p>
+ <p class="mut" id="pav_hlabel" style="text-align:center;margin:6px 0 0">${fmtHeight(heightIn(p))}${k==='drawn'?(aiOK()?' · temporary drawn figure until you make an illustrated avatar':' · temporary drawn figure until you add a photo'):' · clothes line up on this standing pose'}</p>
  <div class="row" style="flex-wrap:nowrap;margin-top:8px;align-items:flex-start"><div class="avprev" style="margin:0;flex:none">${prev}</div>
  <div style="flex:1">
   <p style="margin:0 0 6px"><b>1. Full-body photo</b></p>
@@ -986,15 +987,16 @@ function avatarCard(){const p=S.profile,k=avKind(),style=curStyle();const srcPho
   <button class="btn sm full" data-act="pav_cam">📷 Take full-body photo</button>
   <label class="btn sm sec full" style="text-align:center;margin-top:6px">🖼 Upload full-body photo<input type="file" accept="image/*" id="pav_file" hidden></label>
  </div></div>
- <p style="margin:14px 0 6px"><b>2. Illustration style</b></p>
+ ${aiOK()?` <p style="margin:14px 0 6px"><b>2. Illustration style</b></p>
  <div class="chips wrap">${AV_STYLES.map(s=>`<button class="chip ${style===s.id?'on':''}" data-act="pav_style" data-k="${s.id}">${s.n}${s.id==='fashion'?' · default':''}</button>`).join('')}</div>
  <p style="margin:14px 0 6px"><b>3. Make my illustrated avatar</b></p>
  <label class="consent"><input type="checkbox" id="pav_consent"><span>I agree to send this photo to fal.ai through my Worker to create an illustration. Cost is about <b>2.5¢</b> per image. The photo is used only to process this request.</span></label>
  <button class="btn full" data-act="pav_ai" ${srcPhoto?'':'disabled'}>✨ Make my illustrated avatar (~2.5¢)</button>
+`:'<p class="mut" style="margin:14px 0 6px">Your photo avatar is ready to use. The illustrated avatar and real AI try-on are only on Britts Drip.</p>'}
  ${galleryHtml(p)}
  ${p.avPhoto||p.avAI?`<div class="row" style="margin-top:10px">${p.avAI||p.avPhoto?'<button class="btn sm sec" data-act="pav_realign">Re-align active avatar</button>':''}${k==='ai'&&p.avPhoto?'<button class="btn sm sec" data-act="pav_usephoto">Use my photo instead</button>':''}${k==='photo'&&p.avAI?'<button class="btn sm sec" data-act="pav_useai">Use illustrated avatar</button>':''}<button class="btn sm sec" data-act="pav_del">Delete avatars</button></div>`:''}
  <p class="mut" id="pav_msg"></p>
- <p class="mut" style="font-size:12px"><b>Privacy:</b> Photos and avatars stay on this device. Background removal runs on your phone. Only when you tap “Make my illustrated avatar” (and consent) is the photo sent to your Worker and fal.ai. The drawn figure is used only if you have no photo or illustrated avatar yet.</p></div>`}
+ <p class="mut" style="font-size:12px"><b>Privacy:</b> Photos and avatars stay on this device. Background removal runs on your phone.${aiOK()?' Only when you tap “Make my illustrated avatar” (and consent) is the photo sent to your Worker and fal.ai.':''} The drawn figure is used only if you have no photo or illustrated avatar yet.</p></div>`}
 const _vMe1=vMe;vMe=function(){const h=_vMe1();const i=h.indexOf('</h2>');return i>=0?h.slice(0,i+5)+avatarCard()+h.slice(i+5):avatarCard()+h};
 document.addEventListener('click',async e=>{const t=e.target.closest('[data-act^="pav_"]');if(!t)return;e.stopImmediatePropagation();const A=t.dataset.act,p=S.profile;
  if(A==='pav_style'){p.avStyle=t.dataset.k;await kvSet('profile',p);return render()}
@@ -1012,7 +1014,7 @@ document.addEventListener('click',async e=>{const t=e.target.closest('[data-act^
  if(A==='pav_use'){const g=(p.avGallery||[]).find(x=>x.id===p.avPick)||(p.avGallery||[])[0];if(!g)return toast('Pick an illustration first');p.avAI=g.src;p.avAIcut=g.cut;p.avAIt=g.t;p.avStyle=g.style;p.avMode='ai';await kvSet('profile',p);closeSheet();toast('Illustrated avatar is now active');return render()}
  if(A==='pav_usephoto'){if(!p.avPhoto)return;p.avMode='photo';await kvSet('profile',p);return render()}
  if(A==='pav_useai'){if(!p.avAI)return;p.avMode='ai';await kvSet('profile',p);return render()}
- if(A==='pav_ai')return stylize();
+ if(A==='pav_ai'){if(!aiOK())return toast('Illustrated avatars are only on Britts Drip');return stylize()}
  if(A==='pav_del'){if(!confirm('Delete your photo and illustrated avatars from this device? The drawn figure will be used until you add a new photo.'))return;['avPhoto','avCut','avT','avAI','avAIcut','avAIt','avSrc','avGallery','avPick'].forEach(k=>delete p[k]);p.avMode='drawn';await kvSet('profile',p);return render()}
 },true);
 document.addEventListener('change',async e=>{if(e.target.id!=='pav_file')return;e.stopImmediatePropagation();const f=e.target.files[0];if(!f)return;const im=await fileToImg(f);await ingestBodyPhoto(scale(im,1100).toDataURL('image/jpeg',.9))},true);
